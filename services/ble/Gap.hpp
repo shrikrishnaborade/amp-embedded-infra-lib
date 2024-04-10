@@ -314,6 +314,8 @@ namespace services
         virtual void SetAddress(hal::MacAddress macAddress, GapDeviceAddressType addressType) = 0;
         virtual void StartDeviceDiscovery() = 0;
         virtual void StopDeviceDiscovery() = 0;
+        virtual bool IsPeerDeviceBonded(services::GapAdvertisingEventAddressType addressType, hal::MacAddress macAddress) = 0;
+        virtual void GetPeerDevicePrivateAddress(hal::MacAddress randomMacAddress, hal::MacAddress& privateMacAddress) = 0;
     };
 
     class GapCentralDecorator

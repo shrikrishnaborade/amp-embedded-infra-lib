@@ -15,6 +15,8 @@ namespace services
         MOCK_METHOD(void, SetAddress, (hal::MacAddress macAddress, GapDeviceAddressType addressType));
         MOCK_METHOD(void, StartDeviceDiscovery, ());
         MOCK_METHOD(void, StopDeviceDiscovery, ());
+        MOCK_METHOD(bool, IsPeerDeviceBonded, (services::GapAdvertisingEventAddressType addressType, hal::MacAddress macAddress));
+        MOCK_METHOD(void, GetPeerDevicePrivateAddress, (hal::MacAddress randomMacAddress, hal::MacAddress& privateMacAddress));
     };
 }
 
