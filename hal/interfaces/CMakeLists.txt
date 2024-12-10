@@ -11,6 +11,7 @@ target_link_libraries(hal.interfaces PUBLIC
 )
 
 target_sources(hal.interfaces PRIVATE
+    AdcMultiChannel.hpp
     AnalogToDigitalPin.hpp
     AsyncGpio.cpp
     AsyncGpio.hpp
@@ -39,6 +40,7 @@ target_sources(hal.interfaces PRIVATE
     QuadSpi.hpp
     RandomDataGenerator.hpp
     Reset.hpp
+    SerialCommunication.cpp
     SerialCommunication.hpp
     Spi.cpp
     Spi.hpp
