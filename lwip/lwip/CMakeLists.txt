@@ -226,6 +226,8 @@ target_sources(lwip.lwip PRIVATE
     ${lwip_SOURCE_DIR}/src/netif/ppp/upap.c
     ${lwip_SOURCE_DIR}/src/netif/ppp/utils.c
     ${lwip_SOURCE_DIR}/src/netif/ppp/vj.c
+    ${lwip_SOURCE_DIR}/src/include/netif/ppp/polarssl/md5.h
+    ${lwip_SOURCE_DIR}/src/netif/ppp/polarssl/md5.c
 )
 
 emil_exclude_from_clang_format(lwip.lwip)
