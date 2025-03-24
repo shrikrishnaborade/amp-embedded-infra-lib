@@ -4,12 +4,13 @@
 #include "infra/stream/StreamManipulators.hpp"
 #include "infra/util/Observer.hpp"
 #include "infra/util/Optional.hpp"
+#include "lwip/lwip_pppos/DialUpModemStatus.hpp"
 #include "lwip/lwip_pppos/PppFacade.hpp"
 #include "lwip/lwip_pppos/PppInterface.hpp"
-#include "lwip/lwip_pppos/ialUpModemStatus.hpp"
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
+
 
 namespace services
 {
