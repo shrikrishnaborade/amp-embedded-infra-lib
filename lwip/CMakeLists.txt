@@ -4,3 +4,4 @@ if (NOT EMIL_EXTERNAL_LWIP_TARGET)
 endif()
 
 add_subdirectory(lwip_cpp)
+add_subdirectory(lwip_pppos)
