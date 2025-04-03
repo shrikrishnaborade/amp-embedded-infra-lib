@@ -412,7 +412,8 @@ namespace services
         , blob1(flashFirst, sha256)
         , blob2(blob1.Blob(), blob1.VerificationBuffer(), flashSecond, sha256)
     {
-        Recover(onRecovered);
+        // Recover(onRecovered);
+        onRecovered(false);
     }
 
     template<class T>

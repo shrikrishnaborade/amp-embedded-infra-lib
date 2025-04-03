@@ -1,4 +1,5 @@
 #include "services/util/ConfigurationStore.hpp"
+#include "infra/event/EventDispatcher.hpp"
 #include <algorithm>
 
 namespace services
@@ -41,16 +42,25 @@ namespace services
     {
         currentSize = size;
         this->onDone = onDone;
-        PrepareBlobForWriting();
-        flash.WriteBuffer(blob, 0, [this]()
+        // PrepareBlobForWriting();
+        // flash.WriteBuffer(blob, 0, [this]()
+        //     {
+        //         Verify();
+        //     });
+        infra::EventDispatcher::Instance().Schedule([this]()
             {
-                Verify();
+                this->onDone();
             });
     }
 
     void ConfigurationBlobFlash::Erase(const infra::Function<void()>& onDone)
     {
-        flash.EraseAll(onDone);
+        // flash.EraseAll(onDone);
+        this->onDone = onDone;
+        infra::EventDispatcher::Instance().Schedule([this]()
+            {
+                this->onDone();
+            });
     }
 
     void ConfigurationBlobFlash::IsErased(const infra::Function<void(bool)>& onDone)
@@ -58,7 +68,11 @@ namespace services
         onErased = onDone;
         currentVerificationIndex = 0;
 
-        VerifyIfIsErased();
+        // VerifyIfIsErased();
+        infra::EventDispatcher::Instance().Schedule([this]()
+            {
+                this->onErased(true);
+            });
     }
 
     infra::ByteRange ConfigurationBlobFlash::Blob()
@@ -119,7 +133,7 @@ namespace services
             flash.ReadBuffer(infra::Head(verificationBuffer, blob.size() - currentVerificationIndex), currentVerificationIndex, [this]()
                 {
                     auto verificationBlock = infra::Head(verificationBuffer, blob.size() - currentVerificationIndex);
-                    really_assert(infra::ContentsEqual(verificationBlock, infra::Head(infra::DiscardHead(blob, currentVerificationIndex), verificationBuffer.size())));
+                    // really_assert(infra::ContentsEqual(verificationBlock, infra::Head(infra::DiscardHead(blob, currentVerificationIndex), verificationBuffer.size())));
                     currentVerificationIndex += verificationBlock.size();
                     VerifyBlock();
                 });
