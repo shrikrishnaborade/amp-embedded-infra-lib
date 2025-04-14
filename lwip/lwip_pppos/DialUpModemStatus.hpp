@@ -18,10 +18,7 @@ namespace services
         : public infra::Observer<DialUpModemObserver, DialConnection>
     {
     protected:
-        DialUpModemObserver() = default;
-        DialUpModemObserver(const DialUpModemObserver& other) = delete;
-        DialUpModemObserver& operator=(const DialUpModemObserver& other) = delete;
-        ~DialUpModemObserver() = default;
+        using infra::Observer<DialUpModemObserver, DialConnection>::Observer;
 
     public:
         virtual void Connected() = 0;

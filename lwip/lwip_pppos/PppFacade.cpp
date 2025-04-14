@@ -163,6 +163,7 @@ namespace services
                 tracer.Trace() << "ppp_link_status_cb: PPPERR_CONNECT" << infra::endl;
                 ppp_free(this->ppp);
                 ppp = nullptr;
+
                 SubjectType::NotifyObservers([this](auto& obs)
                     {
                         obs.Error(PppError::DisconnectFromPeer);

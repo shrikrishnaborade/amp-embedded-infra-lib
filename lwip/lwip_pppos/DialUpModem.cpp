@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <cstdlib>
 
-
 namespace services
 {
     DialUpModem::DialUpModem(services::Tracer& tracer, hal::SerialCommunication& modemUart)
@@ -30,6 +29,30 @@ namespace services
     {
         tracer.Trace() << "DialUpModem: Dial";
         state->Connect();
+    }
+
+    void DialUpModem::EventConnected()
+    {
+        NotifyObservers([this](auto& obs)
+            {
+                obs.Connected();
+            });
+    }
+
+    void DialUpModem::EventDisconnected()
+    {
+        NotifyObservers([this](auto& obs)
+            {
+                obs.Disconnected();
+            });
+    }
+
+    void DialUpModem::EventError(PppError error)
+    {
+        NotifyObservers([this](auto& obs)
+            {
+                obs.Error(DialConnectionError::Unknown);
+            });
     }
 
     /// PPP connection observer
@@ -112,10 +135,7 @@ namespace services
     DialUpModem::StateConnected::StateConnected(DialUpModem& parent)
         : StateBase(parent)
     {
-        parent.DialConnection::NotifyObservers([this](auto& obs)
-            {
-                obs.Connected();
-            });
+        parent.EventConnected();
     }
 
     void DialUpModem::StateConnected::Disconnect()
@@ -142,11 +162,7 @@ namespace services
     DialUpModem::StateDisconnected::StateDisconnected(DialUpModem& parent)
         : StateBase(parent)
     {
-        parent.DialConnection::SubjectType::NotifyObservers([this](auto& obs)
-            {
-                obs.Disconnected();
-            });
-
+        parent.EventDisconnected();
         parent.DestroyPppMode();
         parent.ToState<StateIdle>();
     }
@@ -154,10 +170,7 @@ namespace services
     DialUpModem::StateConnectionError::StateConnectionError(DialUpModem& parent)
         : StateBase(parent)
     {
-        parent.DialConnection::SubjectType::NotifyObservers([this](auto& obs)
-            {
-                obs.Error(DialConnectionError::Unknown);
-            });
+        parent.EventError(PppError::Unknown);
 
         parent.DestroyPppMode();
         parent.ToState<StateIdle>();

@@ -38,6 +38,10 @@ namespace services
 
         void KillModem();
 
+        void EventConnected();
+        void EventDisconnected();
+        void EventError(PppError error);
+
     private:
         services::Tracer& tracer;
         struct netif pppNetIf;

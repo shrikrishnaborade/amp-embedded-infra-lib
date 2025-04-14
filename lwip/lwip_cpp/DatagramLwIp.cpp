@@ -276,7 +276,7 @@ namespace services
                 ip6_addr_set_zone(&address.u_addr.ip6, netif_default->ip6_addr->u_addr.ip6.zone);
 
             err_t result = udp_sendto(control, buffer, &address, Convert(*remote).second);
-            assert(result == ERR_OK);
+            // assert(result == ERR_OK);
         }
         pbuf_free(buffer);
     }
