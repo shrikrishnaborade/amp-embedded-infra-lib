@@ -5,15 +5,15 @@ namespace infra
 {
     TextOutputStream operator<<(TextOutputStream stream, const TimePoint& timePoint)
     {
-        // auto time = PartitionedTime(std::chrono::system_clock::to_time_t(timePoint));
+        auto time = PartitionedTime(std::chrono::system_clock::to_time_t(timePoint));
 
-        // const auto w02 = Width(2, '0');
-        // stream << time.years << '-'
-        //        << w02 << time.months << resetWidth << '-'
-        //        << w02 << time.days << resetWidth << 'T'
-        //        << w02 << time.hours << resetWidth << ':'
-        //        << w02 << time.minutes << resetWidth << ':'
-        //        << w02 << time.seconds;
+        const auto w02 = Width(2, '0');
+        stream << time.years << '-'
+               << w02 << time.months << resetWidth << '-'
+               << w02 << time.days << resetWidth << 'T'
+               << w02 << time.hours << resetWidth << ':'
+               << w02 << time.minutes << resetWidth << ':'
+               << w02 << time.seconds;
 
         return stream;
     }
