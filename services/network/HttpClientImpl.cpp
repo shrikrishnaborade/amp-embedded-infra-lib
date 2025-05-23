@@ -4,6 +4,7 @@
 #include "infra/stream/SavedMarkerStream.hpp"
 #include "infra/stream/StringInputStream.hpp"
 #include "infra/util/Compatibility.hpp"
+#include "services/tracer/GlobalTracer.hpp"
 
 namespace services
 {
@@ -118,6 +119,16 @@ namespace services
 
     void HttpClientImpl::DataReceived()
     {
+        services::GlobalTracer().Trace() << "HttpClientImplWithRedirection::DataReceived; received response:" << infra::endl;
+
+        auto reader = ConnectionObserver::Subject().ReceiveStream();
+        infra::DataInputStream::WithErrorPolicy stream(*reader);
+
+        while (!stream.Empty())
+            services::GlobalTracer().Trace() << infra::ByteRangeAsString(stream.ContiguousRange());
+
+        reader = nullptr;
+
         if (bodyReader != infra::none)
             Observer().BodyAvailable(infra::MakeContainedSharedObject(bodyReader->countingReader, bodyReaderAccess.MakeShared(bodyReader)));
         else
