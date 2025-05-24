@@ -11,12 +11,11 @@
 
 namespace services
 {
-    Sc16Is7xx::Sc16Is7xx(infra::ByteRange bufferStorage, hal::SpiMaster& spi, hal::GpioPin& intPin, const Config& config, services::Tracer& tracer)
+    Sc16Is7xx::Sc16Is7xx(infra::ByteRange bufferStorage, hal::SpiMaster& spi, hal::GpioPin& intPin, const Config& config)
         : txBuffer(bufferStorage)
         , spi(spi)
         , intPin(intPin)
         , config(config)
-        , tracer(tracer)
     {
         intPin.Config(hal::PinConfigType::input);
         intPin.EnableInterrupt([this]()
@@ -36,6 +35,14 @@ namespace services
         data.shrink_from_back_to(txBuffer.Available());
         // tracer.Trace() << "Sc16Is7xx::SendData: size " << data.size() << ", buffer available " << txBuffer.Available();
         txBuffer.Push(data);
+        if (sendTimer.Armed())
+        {
+            sendTimer.Cancel();
+        }
+        sendTimer.Start(std::chrono::milliseconds(100), [this]()
+            {
+                this->sendData = true;
+            });
     }
 
     void Sc16Is7xx::ReceiveData(infra::Function<void(infra::ConstByteRange data)> dataReceived)
@@ -241,7 +248,7 @@ namespace services
                     });
                 seq.ElseIf([this]()
                     {
-                        return !this->txBuffer.Empty() && !this->txBusy;
+                        return !this->txBuffer.Empty() && !this->txBusy && this->sendData;
                     });
 
                 seq.Step([this]()

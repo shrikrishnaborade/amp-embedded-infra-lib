@@ -68,7 +68,7 @@ namespace services
     public:
         template<std::size_t StorageSize>
         using WithStorage = infra::WithStorage<Sc16Is7xx, std::array<uint8_t, StorageSize>>;
-        Sc16Is7xx(infra::ByteRange bufferStorage, hal::SpiMaster& spi, hal::GpioPin& intPin, const Config& config, services::Tracer& tracer);
+        Sc16Is7xx(infra::ByteRange bufferStorage, hal::SpiMaster& spi, hal::GpioPin& intPin, const Config& config);
 
         // hal::SerialCommunication
         void SendData(infra::ConstByteRange data, infra::Function<void()> actionOnCompletion) override;
@@ -82,7 +82,6 @@ namespace services
         hal::SpiMaster& spi;
         hal::GpioPin& intPin;
         const Config& config;
-        services::Tracer& tracer;
 
         infra::AutoResetFunction<void(infra::ConstByteRange data)> dataReceived;
         infra::AutoResetFunction<void()> onSendData;
@@ -237,6 +236,9 @@ namespace services
 
         infra::TimerRepeating intTimer;
         bool txBusy = false;
+
+        infra::TimerSingleShot sendTimer;
+        bool sendData = false;
     };
 }
 #endif
