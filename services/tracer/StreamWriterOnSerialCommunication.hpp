@@ -3,7 +3,9 @@
 
 #include "hal/interfaces/SerialCommunication.hpp"
 #include "infra/stream/OutputStream.hpp"
+#include "infra/timer/Timer.hpp"
 #include "infra/util/CyclicBuffer.hpp"
+#include <chrono>
 
 namespace services
 {
@@ -14,7 +16,7 @@ namespace services
         template<std::size_t StorageSize>
         using WithStorage = infra::WithStorage<StreamWriterOnSerialCommunication, std::array<uint8_t, StorageSize>>;
 
-        StreamWriterOnSerialCommunication(infra::ByteRange bufferStorage, hal::SerialCommunication& communication);
+        StreamWriterOnSerialCommunication(infra::ByteRange bufferStorage, hal::SerialCommunication& communication, infra::Duration timeout = std::chrono::milliseconds(0));
 
         void Insert(infra::ConstByteRange range, infra::StreamErrorPolicy& errorPolicy) override;
         std::size_t Available() const override;
@@ -27,6 +29,8 @@ namespace services
         infra::CyclicByteBuffer buffer;
         hal::SerialCommunication& communication;
         bool communicating = false;
+        infra::Duration timeout;
+        infra::TimerSingleShot txTimeoutTimer;
     };
 }
 
