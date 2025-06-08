@@ -7,6 +7,9 @@ namespace services
 {
     void SetGlobalTracerInstance(Tracer& tracer);
     Tracer& GlobalTracer();
+
+    void SetGlobalSoftTracerInstance(Tracer& tracer);
+    Tracer& GlobalSoftTracer();
 }
 
 #endif

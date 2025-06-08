@@ -8,6 +8,7 @@ namespace services
     namespace
     {
         Tracer* globalTracerInstance = nullptr;
+        Tracer* globalSoftTracerInstance = nullptr;
 
 #ifdef EMIL_HOST_BUILD
         infra::IoOutputStream ioOutputStream;
@@ -30,5 +31,22 @@ namespace services
 
         assert(globalTracerInstance != nullptr);
         return *globalTracerInstance;
+    }
+
+    void SetGlobalSoftTracerInstance(Tracer& tracer)
+    {
+        assert(globalSoftTracerInstance == nullptr);
+        globalSoftTracerInstance = &tracer;
+    }
+
+    Tracer& GlobalSoftTracer()
+    {
+#ifdef EMIL_HOST_BUILD
+        if (globalTracerInstance == nullptr)
+            return tracerDummy;
+#endif
+
+        assert(globalSoftTracerInstance != nullptr);
+        return *globalSoftTracerInstance;
     }
 }
