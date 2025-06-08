@@ -5,6 +5,7 @@
 #include "infra/stream/StreamManipulators.hpp"
 #include "infra/util/BoundedVector.hpp"
 #include "infra/util/ByteRange.hpp"
+#include "services/tracer/GlobalTracer.hpp"
 #include "services/tracer/Tracer.hpp"
 #include <chrono>
 #include <cstdint>
@@ -16,6 +17,7 @@ namespace services
         , spi(spi)
         , intPin(intPin)
         , config(config)
+        , tracer(services::GlobalSoftTracer())
     {
         intPin.Config(hal::PinConfigType::input);
         intPin.EnableInterrupt([this]()
@@ -35,14 +37,7 @@ namespace services
         data.shrink_from_back_to(txBuffer.Available());
         // tracer.Trace() << "Sc16Is7xx::SendData: size " << data.size() << ", buffer available " << txBuffer.Available();
         txBuffer.Push(data);
-        if (sendTimer.Armed())
-        {
-            sendTimer.Cancel();
-        }
-        sendTimer.Start(std::chrono::milliseconds(100), [this]()
-            {
-                this->sendData = true;
-            });
+        this->sendData = true;
     }
 
     void Sc16Is7xx::ReceiveData(infra::Function<void(infra::ConstByteRange data)> dataReceived)
@@ -80,17 +75,22 @@ namespace services
 
     void Sc16Is7xx::WriteFifo(infra::ConstByteRange data, infra::Function<void()> onDone)
     {
+        if (data.size() == 0)
+        {
+            onDone();
+            return;
+        }
         this->reg = 0x00;
         this->fifoWriteData = data;
         this->onFifoReadWriteDone = onDone;
-        this-> // tracer.Trace() << "Sc16Is7xx::WriteFifo " << data.size();
-            spi.SendData(infra::MakeByteRange(this->reg), hal::SpiAction::continueSession, [this]()
-                {
-                    spi.SendData(this->fifoWriteData, hal::SpiAction::stop, [this]()
-                        {
-                            this->onFifoReadWriteDone();
-                        });
-                });
+        // tracer.Trace() << "Sc16Is7xx::WriteFifo " << data.size();
+        spi.SendData(infra::MakeByteRange(this->reg), hal::SpiAction::continueSession, [this]()
+            {
+                spi.SendData(this->fifoWriteData, hal::SpiAction::stop, [this]()
+                    {
+                        this->onFifoReadWriteDone();
+                    });
+            });
     }
 
     void Sc16Is7xx::ReadFifo(infra::ByteRange data, infra::Function<void()> onDone)
@@ -109,6 +109,8 @@ namespace services
 
     void Sc16Is7xx::Configure(infra::Function<void()> onDone)
     {
+        this->onConfigureDone = onDone;
+
         // tracer.Trace() << "Configure()";
         GetConfiguration();
         WriteRegisters([this]()
@@ -119,6 +121,7 @@ namespace services
                         // tracer.Trace() << "ReadRegisters done!";
                         interrupt = false;
                         Process();
+                        this->onConfigureDone();
                     });
             });
     }
@@ -192,7 +195,7 @@ namespace services
 
                 seq.If([this]()
                     {
-                        return interrupt;
+                        return interrupt || !intPin.Get();
                     });
 
                 seq.Step([this]()
@@ -263,7 +266,7 @@ namespace services
 
                 seq.Step([this]()
                     {
-                        this->intTimer.Start(std::chrono::milliseconds(50), [this]()
+                        this->intTimer.Start(std::chrono::milliseconds(20), [this]()
                             {
                                 this->seq.Continue();
                             });
@@ -321,16 +324,21 @@ namespace services
         {
             this->ReadRegister(TXLVL, [this](uint8_t sizeAvailable)
                 {
-                    auto size = std::min<uint8_t>(sizeAvailable, this->txBuffer.Size());
+                    auto size = std::min<uint8_t>(sizeAvailable, std::min<size_t>(64u, this->txBuffer.Size()));
 
-                    // this->tracer.Trace() << "ProcessTxInterrupt: txBuffer " << this->txBuffer.Size() << ", TXLVL " << sizeAvailable;
+                    this->tracer.Trace() << "ProcessTxInterrupt: txBuffer " << this->txBuffer.Size() << ", TXLVL " << sizeAvailable << ", size " << size;
 
                     auto range = this->txBuffer.ContiguousRange();
+                    // this->tracer.Trace() << "ProcessTxInterrupt: range " << range.size();
                     range.shrink_from_back_to(size);
+
+                    // this->tracer.Trace() << "ProcessTxInterrupt: range " << range.size();
+
                     this->WriteFifo(range, [this, size]()
                         {
                             this->txBusy = true;
                             this->txBuffer.Pop(size);
+                            // this->tracer.Trace() << "ProcessTxInterrupt: done, txbuffer size " << this->txBuffer.Size();
                             this->onInterruptProcessDone();
                         });
                 });
@@ -364,7 +372,7 @@ namespace services
                     {
                         this->ReadRegister(this->readReg, [this](uint8_t value)
                             {
-                                // //tracer.Trace() << "reg 0x" << infra::hex << this->readReg << " : 0x" << infra::hex << value;
+                                tracer.Trace() << "reg 0x" << infra::hex << this->readReg << " : 0x" << infra::hex << value;
                                 this->readReg++;
                                 this->seqRead.Continue();
                             });
@@ -396,7 +404,7 @@ namespace services
                 this->seqWrite.Step([this]()
                     {
                         const auto& entry = this->registerConfig.front();
-                        // tracer.Trace() << "writting reg 0x" << infra::hex << entry.reg << " : 0x" << infra::hex << entry.value;
+                        tracer.Trace() << "writting reg 0x" << infra::hex << entry.reg << " : 0x" << infra::hex << entry.value;
                         this->WriteRegister(entry.reg, entry.value, [this]()
                             {
                                 this->registerConfig.pop_front();

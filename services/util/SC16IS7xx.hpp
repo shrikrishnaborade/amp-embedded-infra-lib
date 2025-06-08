@@ -83,7 +83,7 @@ namespace services
         hal::GpioPin& intPin;
         const Config& config;
 
-        infra::AutoResetFunction<void(infra::ConstByteRange data)> dataReceived;
+        infra::Function<void(infra::ConstByteRange data)> dataReceived;
         infra::AutoResetFunction<void()> onSendData;
 
         const uint8_t RHR = 0x00;
@@ -239,6 +239,8 @@ namespace services
 
         infra::TimerSingleShot sendTimer;
         bool sendData = false;
+
+        services::Tracer& tracer;
     };
 }
 #endif
