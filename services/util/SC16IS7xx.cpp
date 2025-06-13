@@ -326,7 +326,7 @@ namespace services
                 {
                     auto size = std::min<uint8_t>(sizeAvailable, std::min<size_t>(64u, this->txBuffer.Size()));
 
-                    this->tracer.Trace() << "ProcessTxInterrupt: txBuffer " << this->txBuffer.Size() << ", TXLVL " << sizeAvailable << ", size " << size;
+                    // this->tracer.Trace() << "ProcessTxInterrupt: txBuffer " << this->txBuffer.Size() << ", TXLVL " << sizeAvailable << ", size " << size;
 
                     auto range = this->txBuffer.ContiguousRange();
                     // this->tracer.Trace() << "ProcessTxInterrupt: range " << range.size();
@@ -372,7 +372,7 @@ namespace services
                     {
                         this->ReadRegister(this->readReg, [this](uint8_t value)
                             {
-                                tracer.Trace() << "reg 0x" << infra::hex << this->readReg << " : 0x" << infra::hex << value;
+                                // tracer.Trace() << "reg 0x" << infra::hex << this->readReg << " : 0x" << infra::hex << value;
                                 this->readReg++;
                                 this->seqRead.Continue();
                             });
@@ -404,7 +404,7 @@ namespace services
                 this->seqWrite.Step([this]()
                     {
                         const auto& entry = this->registerConfig.front();
-                        tracer.Trace() << "writting reg 0x" << infra::hex << entry.reg << " : 0x" << infra::hex << entry.value;
+                        // tracer.Trace() << "writting reg 0x" << infra::hex << entry.reg << " : 0x" << infra::hex << entry.value;
                         this->WriteRegister(entry.reg, entry.value, [this]()
                             {
                                 this->registerConfig.pop_front();
