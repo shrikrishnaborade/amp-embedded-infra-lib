@@ -114,8 +114,6 @@ namespace services
         if (!linkUp)
             newIpv4Address = IPv4Address();
 
-        return;
-#if false
         if ((reason & (LWIP_NSC_IPV4_SETTINGS_CHANGED | LWIP_NSC_LINK_CHANGED)) != 0 && ipv4Address != newIpv4Address)
         {
             ipv4Address = newIpv4Address;
@@ -142,7 +140,6 @@ namespace services
                     starting = true;
             }
         }
-#endif
     }
 
     void LightweightIp::OnStopped()
