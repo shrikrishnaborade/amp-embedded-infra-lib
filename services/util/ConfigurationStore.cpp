@@ -1,5 +1,7 @@
 #include "services/util/ConfigurationStore.hpp"
 #include "infra/event/EventDispatcher.hpp"
+#include "protobuf/echo/Echo.hpp"
+#include "services/tracer/GlobalTracer.hpp"
 #include <algorithm>
 
 namespace services
@@ -30,6 +32,7 @@ namespace services
             {
                 if (BlobIsValid())
                 {
+                    services::GlobalTracer().Trace() << "ConfigurationBlobFlash::Recover: invalid blob";
                     RecoverCurrentSize();
                     this->onRecovered(true);
                 }
@@ -40,27 +43,20 @@ namespace services
 
     void ConfigurationBlobFlash::Write(uint32_t size, const infra::Function<void()>& onDone)
     {
+        services::GlobalTracer().Trace() << "ConfigurationBlobFlash::Write";
         currentSize = size;
         this->onDone = onDone;
-        // PrepareBlobForWriting();
-        // flash.WriteBuffer(blob, 0, [this]()
-        //     {
-        //         Verify();
-        //     });
-        infra::EventDispatcher::Instance().Schedule([this]()
+        PrepareBlobForWriting();
+        flash.WriteBuffer(blob, 0, [this]()
             {
-                this->onDone();
+                Verify();
             });
     }
 
     void ConfigurationBlobFlash::Erase(const infra::Function<void()>& onDone)
     {
-        // flash.EraseAll(onDone);
-        this->onDone = onDone;
-        infra::EventDispatcher::Instance().Schedule([this]()
-            {
-                this->onDone();
-            });
+        services::GlobalTracer().Trace() << "ConfigurationBlobFlash::Erase";
+        flash.EraseAll(onDone);
     }
 
     void ConfigurationBlobFlash::IsErased(const infra::Function<void(bool)>& onDone)
@@ -68,11 +64,7 @@ namespace services
         onErased = onDone;
         currentVerificationIndex = 0;
 
-        // VerifyIfIsErased();
-        infra::EventDispatcher::Instance().Schedule([this]()
-            {
-                this->onErased(true);
-            });
+        VerifyIfIsErased();
     }
 
     infra::ByteRange ConfigurationBlobFlash::Blob()
@@ -133,7 +125,7 @@ namespace services
             flash.ReadBuffer(infra::Head(verificationBuffer, blob.size() - currentVerificationIndex), currentVerificationIndex, [this]()
                 {
                     auto verificationBlock = infra::Head(verificationBuffer, blob.size() - currentVerificationIndex);
-                    // really_assert(infra::ContentsEqual(verificationBlock, infra::Head(infra::DiscardHead(blob, currentVerificationIndex), verificationBuffer.size())));
+                    really_assert(infra::ContentsEqual(verificationBlock, infra::Head(infra::DiscardHead(blob, currentVerificationIndex), verificationBuffer.size())));
                     currentVerificationIndex += verificationBlock.size();
                     VerifyBlock();
                 });
