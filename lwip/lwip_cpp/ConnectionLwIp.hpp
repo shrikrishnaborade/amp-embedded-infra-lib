@@ -16,15 +16,15 @@
 
 namespace services
 {
-#ifdef ESP_PLATFORM
-    static const uint32_t tcpSndBuf = 2 * TCP_MSS;
+    // #ifdef ESP_PLATFORM
+    static const uint32_t tcpSndBuf = 4 * TCP_MSS;
     static const uint32_t tcpSndQueueLen = ((4 * (tcpSndBuf) + (TCP_MSS - 1)) / (TCP_MSS));
     static const uint32_t tcpWnd = (4 * TCP_MSS);
-#else
-    static const uint32_t tcpSndBuf = TCP_SND_BUF;
-    static const uint32_t tcpSndQueueLen = TCP_SND_QUEUELEN;
-    static const uint32_t tcpWnd = TCP_WND;
-#endif
+    // #else
+    //     static const uint32_t tcpSndBuf = TCP_SND_BUF;
+    //     static const uint32_t tcpSndQueueLen = TCP_SND_QUEUELEN;
+    //     static const uint32_t tcpWnd = TCP_WND;
+    // #endif
 
     class ConnectionFactoryLwIp;
 

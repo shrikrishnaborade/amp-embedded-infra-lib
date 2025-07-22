@@ -128,7 +128,7 @@ namespace services
         mbedtls_ctr_drbg_context ctr_drbg;
 
         infra::BoundedDeque<uint8_t>::WithMaxSize<1024> receiveBuffer;
-        infra::BoundedVector<uint8_t>::WithMaxSize<1024> sendBuffer;
+        infra::BoundedVector<uint8_t>::WithMaxSize<34 * 1024> sendBuffer;
         infra::BoundedString::WithStorage<MBEDTLS_SSL_MAX_HOST_NAME_LEN + 1> terminatedHostname;
         bool sending = false;
 
