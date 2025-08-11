@@ -16,6 +16,7 @@ target_include_directories(crypto.micro_ecc PUBLIC
 target_compile_options(crypto.micro_ecc PUBLIC
     $<$<BOOL:${TARGET_CORTEX}>:-fomit-frame-pointer>
     $<$<CXX_COMPILER_ID:MSVC>:/wd4244>
+    $<$<CXX_COMPILER_ID:TIClang>:-DuECC_PLATFORM=0>
 )
 
 target_sources(crypto.micro_ecc PRIVATE
