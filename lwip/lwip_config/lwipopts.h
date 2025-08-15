@@ -29,6 +29,10 @@ extern "C"
 
 #define MEM_SIZE 3200
 
+//#define TCP_MSS 1460    
+//#define TCP_WND 4 * 1024u
+//#define TCP_SND_BUF    4*1024u 
+
 #define CHECKSUM_GEN_IP 1
 #define CHECKSUM_GEN_UDP 1
 #define CHECKSUM_GEN_TCP 1

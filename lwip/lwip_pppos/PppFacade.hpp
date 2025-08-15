@@ -33,8 +33,8 @@ namespace services
         ppp_pcb* ppp;
         infra::AutoResetFunction<void(bool)> onDone;
 
-        std::array<uint8_t, 8096u> txBuffer;
-        infra::QueueForOneReaderOneIrqWriter<uint8_t>::WithStorage<4096 * 2u> receivedData;
+        std::array<uint8_t, 4096u> txBuffer;
+        infra::QueueForOneReaderOneIrqWriter<uint8_t>::WithStorage<4096u> receivedData;
         services::StreamWriterOnSerialCommunication streamWriterOnSerialCommunication;
         infra::DataOutputStream::WithErrorPolicy writeStream;
         infra::ByteRange initialLcpData;

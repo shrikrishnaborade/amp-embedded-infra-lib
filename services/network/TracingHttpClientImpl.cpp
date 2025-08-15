@@ -1,4 +1,5 @@
 #include "services/network/TracingHttpClientImpl.hpp"
+#include <utility>
 
 namespace services
 {
@@ -82,7 +83,8 @@ namespace services
 
     void TracingHttpClientImplWithRedirection::SendStreamAvailable(infra::SharedPtr<infra::StreamWriter>&& writer)
     {
-        // auto tracingWriterPtr = tracingWriter.Emplace(, tracer);
+        tracer.Trace() << "HttpClientImplWithRedirection::SendStreamAvailable";
+        // auto tracingWriterPtr = tracingWriter.Emplace(std::move(writer), tracer);
         // HttpClientImplWithRedirection::SendStreamAvailable(infra::MakeContainedSharedObject(tracingWriterPtr->Writer(), std::move(tracingWriterPtr)));
         HttpClientImplWithRedirection::SendStreamAvailable(std::move(writer));
     }
