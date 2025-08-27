@@ -34,7 +34,7 @@ namespace services
         infra::AutoResetFunction<void(bool)> onDone;
 
         std::array<uint8_t, 2*4096u> txBuffer;
-        infra::QueueForOneReaderOneIrqWriter<uint8_t>::WithStorage<4096u> receivedData;
+        infra::QueueForOneReaderOneIrqWriter<uint8_t>::WithStorage<2*4096u> receivedData;
         services::StreamWriterOnSerialCommunication streamWriterOnSerialCommunication;
         infra::DataOutputStream::WithErrorPolicy writeStream;
         infra::ByteRange initialLcpData;
