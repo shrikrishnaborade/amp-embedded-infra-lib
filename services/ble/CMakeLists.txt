@@ -15,6 +15,7 @@ target_link_libraries(services.ble PUBLIC
 )
 
 target_sources(services.ble PRIVATE
+    Att.hpp
     BondBlobPersistence.cpp
     BondBlobPersistence.hpp
     BondStorageSynchronizer.cpp
