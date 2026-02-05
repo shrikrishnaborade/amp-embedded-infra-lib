@@ -2,15 +2,16 @@
 #define INFRA_SHARED_OPTIONAL_HPP
 
 #include "infra/util/Function.hpp"
-#include "infra/util/Optional.hpp"
-#include "infra/util/SharedObjectAllocator.hpp"
+#include "infra/util/ReallyAssert.hpp"
+#include "infra/util/SharedPtr.hpp"
 #include <cstddef>
+#include <optional>
 
 namespace infra
 {
     // clang-format off
-    extern const struct AlsoWhenAlreadyAllocatable{} alsoWhenAlreadyAllocatable;
-
+    struct AlsoWhenAlreadyAllocatable{};
+    extern const AlsoWhenAlreadyAllocatable alsoWhenAlreadyAllocatable;
     // clang-format on
 
     template<class T>
@@ -43,7 +44,7 @@ namespace infra
         void Deallocate(void* control) override;
 
     private:
-        infra::Optional<T> object;
+        std::optional<T> object;
         detail::SharedPtrControl control;
         bool allocatable = true;
     };
@@ -91,7 +92,7 @@ namespace infra
     {
         assert(allocatable);
         allocatable = false;
-        object.Emplace(std::forward<Args>(args)...);
+        object.emplace(std::forward<Args>(args)...);
         return SharedPtr<T>(&control, &*object);
     }
 
@@ -146,7 +147,7 @@ namespace infra
     template<class T>
     void SharedOptional<T>::Destruct(const void* object)
     {
-        this->object = infra::none;
+        this->object.reset();
     }
 
     template<class T>

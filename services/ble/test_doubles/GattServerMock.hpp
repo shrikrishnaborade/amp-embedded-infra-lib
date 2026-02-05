@@ -1,5 +1,5 @@
-#ifndef SERVICES_GATT_MOCK_HPP
-#define SERVICES_GATT_MOCK_HPP
+#ifndef SERVICES_GATT_SERVER_MOCK_HPP
+#define SERVICES_GATT_SERVER_MOCK_HPP
 
 #include "services/ble/Gatt.hpp"
 #include "services/ble/GattServer.hpp"
@@ -18,7 +18,8 @@ namespace services
         : public services::GattServerCharacteristicOperations
     {
     public:
-        MOCK_METHOD(UpdateStatus, Update, (const services::GattServerCharacteristicOperationsObserver& characteristic, infra::ConstByteRange data), (const));
+        MOCK_METHOD(UpdateStatus, Update, (const services::GattServerCharacteristicOperationsObserver& characteristic, infra::ConstByteRange data), ());
+        MOCK_METHOD(void, AddDescriptor, (const GattServerCharacteristicOperationsObserver& characteristic, const AttAttribute::Uuid& uuid, infra::ConstByteRange data));
     };
 
     class GattServerCharacteristicUpdateMock
@@ -34,6 +35,7 @@ namespace services
     public:
         MOCK_METHOD(AttAttribute::Handle, ServiceHandle, (), (const));
         MOCK_METHOD(AttAttribute::Handle, CharacteristicHandle, (), (const));
+        MOCK_METHOD(AttAttribute::Handle, CharacteristicValueHandle, (), (const));
         MOCK_METHOD(void, Update, (infra::ConstByteRange data, infra::Function<void()> onDone));
     };
 }

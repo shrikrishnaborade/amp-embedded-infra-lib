@@ -4,12 +4,22 @@
 #include "hal/generic/TimerServiceGeneric.hpp"
 #include "infra/syntax/ProtoFormatter.hpp"
 #include "infra/syntax/ProtoParser.hpp"
+#include "protobuf/echo/Echo.hpp"
 #include "protobuf/protoc_echo_plugin/EchoObjects.hpp"
 #include "services/network_instantiations/NetworkAdapter.hpp"
 #include <thread>
 
 namespace application
 {
+    class ServiceProxyStub
+        : public services::ServiceProxy
+    {
+    public:
+        explicit ServiceProxyStub(services::Echo& echo)
+            : services::ServiceProxy(echo, 0)
+        {}
+    };
+
     namespace ConsoleToken
     {
         class End
@@ -52,17 +62,6 @@ namespace application
 
             bool operator==(const Dot& other) const;
             bool operator!=(const Dot& other) const;
-
-            std::size_t index;
-        };
-
-        class Underscore
-        {
-        public:
-            explicit Underscore(std::size_t index);
-
-            bool operator==(const Underscore& other) const;
-            bool operator!=(const Underscore& other) const;
 
             std::size_t index;
         };
@@ -147,7 +146,7 @@ namespace application
             bool value;
         };
 
-        using Token = infra::Variant<End, Error, Comma, Dot, Underscore, LeftBrace, RightBrace, LeftBracket, RightBracket, String, Integer, Boolean>;
+        using Token = std::variant<End, Error, Comma, Dot, LeftBrace, RightBrace, LeftBracket, RightBracket, String, Integer, Boolean>;
     }
 
     class ConsoleTokenizer
@@ -184,22 +183,28 @@ namespace application
 
     class Console
         : public infra::Subject<ConsoleObserver>
+        , public services::EchoWithPolicy
     {
     public:
         explicit Console(EchoRoot& root, bool stopOnNetworkClose);
+        ~Console();
 
         void Run();
         services::ConnectionFactory& ConnectionFactory();
         services::NameResolver& NameResolver();
         void DataReceived(infra::StreamReader& reader);
 
-    private:
-        struct Empty
-        {};
+        // Implementation of EchoWithPolicy
+        void SetPolicy(services::EchoPolicy& policy) override;
+        void RequestSend(services::ServiceProxy& serviceProxy) override;
+        void ServiceDone() override;
+        void CancelRequestSend(services::ServiceProxy& serviceProxy) override;
+        services::MethodSerializerFactory& SerializerFactory() override;
 
+    private:
         struct MessageTokens
         {
-            using MessageTokenValue = infra::Variant<Empty, std::string, int64_t, bool, MessageTokens, std::vector<MessageTokens>>;
+            using MessageTokenValue = std::variant<std::string, int64_t, bool, MessageTokens, std::vector<MessageTokens>>;
 
             std::vector<std::pair<MessageTokenValue, std::size_t>> tokens;
         };
@@ -232,17 +237,23 @@ namespace application
     private:
         void MethodReceived(const EchoService& service, const EchoMethod& method, infra::ProtoParser&& parser);
         void PrintMessage(const EchoMessage& message, infra::ProtoParser& parser);
-        void PrintField(infra::Variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData, const EchoField& field, infra::ProtoParser& parser);
+        void PrintField(std::variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData, const EchoField& field, infra::ProtoParser& parser);
         void MethodNotFound(const EchoService& service, uint32_t methodId) const;
         void ServiceNotFound(uint32_t serviceId, uint32_t methodId) const;
         void RunEventDispatcher(bool stopOnNetworkClose);
         void ListInterfaces();
+        void Help();
         void ListFields(const EchoMessage& message);
         void Process(const std::string& line) const;
         std::pair<std::shared_ptr<const EchoService>, const EchoMethod&> SearchMethod(MethodInvocation& methodInvocation) const;
 
     private:
+        static services::EchoPolicy defaultPolicy;
+
+        services::MethodSerializerFactory::OnHeap serializerFactory;
         EchoRoot& root;
+        services::EchoPolicy* policy = &defaultPolicy;
+        mutable ServiceProxyStub serviceProxyStub;
         main_::NetworkAdapter network;
         hal::TimerServiceGeneric timerService{ infra::systemTimerServiceId };
         std::thread eventDispatcherThread;
@@ -253,6 +264,7 @@ namespace application
         std::condition_variable condition;
         bool processDone = false;
         std::string receivedData;
+        bool serviceBusy = false;
     };
 
     namespace ConsoleExceptions
@@ -260,6 +272,12 @@ namespace application
         struct MethodNotFound
         {
             std::vector<std::string> method;
+        };
+
+        struct AmbiguousMethod
+        {
+            std::string methodName;
+            std::vector<std::string> serviceNames;
         };
 
         struct SyntaxError

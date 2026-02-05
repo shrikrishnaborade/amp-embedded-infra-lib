@@ -82,6 +82,11 @@ namespace services
         Attach(connectionObserver);
     }
 
+    bool ConnectionWin::Connected() const
+    {
+        return socket != 0;
+    }
+
     void ConnectionWin::Receive()
     {
         while (!receiveBuffer.full())
@@ -91,7 +96,7 @@ namespace services
             if (received == SOCKET_ERROR)
             {
                 if (WSAGetLastError() != WSAEWOULDBLOCK)
-                    ResetOwnership();
+                    AbortAndDestroy();
                 return;
             }
             else if (received != 0)
@@ -107,7 +112,7 @@ namespace services
             }
             else
             {
-                ResetOwnership();
+                CloseAndDestroy();
                 return;
             }
         }
@@ -126,7 +131,7 @@ namespace services
             if (sent == SOCKET_ERROR)
             {
                 if (WSAGetLastError() != WSAEWOULDBLOCK)
-                    ResetOwnership();
+                    AbortAndDestroy();
                 return;
             }
 
@@ -260,7 +265,7 @@ namespace services
         : network(network)
         , factory(factory)
     {
-        auto address = factory.Address().Get<services::IPv4Address>();
+        auto address = std::get<services::IPv4Address>(factory.Address());
 
         connectSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         assert(connectSocket != INVALID_SOCKET);

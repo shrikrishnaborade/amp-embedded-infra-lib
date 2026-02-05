@@ -1,4 +1,5 @@
 #include "services/network/EchoOnConnection.hpp"
+#include "infra/util/SharedPtr.hpp"
 
 namespace services
 {
@@ -12,6 +13,7 @@ namespace services
         if (reader.Allocatable())
         {
             auto readerPtr = reader.Emplace(ConnectionObserver::Subject().ReceiveStream(), *this);
+            keepAliveWhileReading = ConnectionObserver::Subject().ObserverPtr();
             EchoOnStreams::DataReceived(infra::MakeContainedSharedObject(readerPtr->limitedReader, readerPtr));
         }
         else
@@ -20,7 +22,8 @@ namespace services
 
     void EchoOnConnection::RequestSendStream(std::size_t size)
     {
-        ConnectionObserver::Subject().RequestSendStream(std::min(size, ConnectionObserver::Subject().MaxSendStreamSize()));
+        if (IsAttached())
+            ConnectionObserver::Subject().RequestSendStream(std::min(size, ConnectionObserver::Subject().MaxSendStreamSize()));
     }
 
     EchoOnConnection::LimitedReader::LimitedReader(infra::SharedPtr<infra::StreamReaderWithRewinding>&& reader, EchoOnConnection& connection)

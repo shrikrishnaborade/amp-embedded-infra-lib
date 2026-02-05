@@ -9,7 +9,10 @@ namespace
 {
     void SetNonBlocking(int fileDescriptor)
     {
-        if (fcntl(fileDescriptor, F_SETFL, fcntl(fileDescriptor, F_GETFL, 0) | O_NONBLOCK) == -1)
+        auto status_flags = fcntl(fileDescriptor, F_GETFL, 0);
+        if (status_flags == -1)
+            std::abort();
+        if (fcntl(fileDescriptor, F_SETFL, status_flags | O_NONBLOCK) == -1)
             std::abort();
     }
 }
@@ -19,13 +22,17 @@ namespace services
     ConnectionBsd::ConnectionBsd(EventDispatcherWithNetwork& network, int socket)
         : network(network)
         , socket(socket)
+        , streamReader([this]()
+              {
+                  keepAliveForReader = nullptr;
+              })
     {
         SetNonBlocking(socket);
     }
 
     ConnectionBsd::~ConnectionBsd()
     {
-        if (socket != 0)
+        if (Connected())
         {
             int result = close(socket);
             if (result == -1)
@@ -49,6 +56,7 @@ namespace services
 
     infra::SharedPtr<infra::StreamReaderWithRewinding> ConnectionBsd::ReceiveStream()
     {
+        keepAliveForReader = SharedFromThis();
         return streamReader.Emplace(*this);
     }
 
@@ -86,6 +94,11 @@ namespace services
         Attach(connectionObserver);
     }
 
+    bool ConnectionBsd::Connected() const
+    {
+        return socket != 0;
+    }
+
     void ConnectionBsd::Receive()
     {
         while (!receiveBuffer.full())
@@ -95,7 +108,7 @@ namespace services
             if (received == -1)
             {
                 if (errno != EWOULDBLOCK)
-                    ResetOwnership();
+                    AbortAndDestroy();
                 return;
             }
             else if (received != 0)
@@ -110,7 +123,7 @@ namespace services
             }
             else
             {
-                ResetOwnership();
+                CloseAndDestroy();
                 return;
             }
         }
@@ -155,7 +168,8 @@ namespace services
 
     void ConnectionBsd::ResetOwnership()
     {
-        Detach();
+        if (IsAttached())
+            Detach();
         self = nullptr;
     }
 
@@ -243,7 +257,7 @@ namespace services
         : network(network)
         , factory(factory)
     {
-        auto address = factory.Address().Get<services::IPv4Address>();
+        auto address = std::get<services::IPv4Address>(factory.Address());
 
         connectSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         assert(connectSocket != -1);

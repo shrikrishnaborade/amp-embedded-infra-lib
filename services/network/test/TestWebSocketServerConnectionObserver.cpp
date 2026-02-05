@@ -203,8 +203,11 @@ TEST_F(WebSocketServerConnectionObserverTest, receive_frame_with_larger_payload_
     testing::InSequence s;
     EXPECT_CALL(connectionObserver, DataReceived()).WillOnce(testing::Invoke([this]()
         {
+            EXPECT_CALL(connectionObserver, DataReceived()).WillOnce(testing::Invoke([this]()
+                {
+                    CheckDataReceived(std::vector<uint8_t>(8, 0x91));
+                }));
             CheckDataReceived(std::vector<uint8_t>(512, 0x91));
-            CheckDataReceived(std::vector<uint8_t>(8, 0x91));
         }));
 
     connection.SimulateDataReceived(receiveDataPayload);
@@ -314,4 +317,28 @@ TEST_F(WebSocketServerConnectionObserverTest, dont_use_whole_buffer)
     SendData({ 0x91, 0x91 }, 128);
     ExecuteAllActions();
     EXPECT_EQ(sendFrame, connection.sentData);
+}
+
+TEST_F(WebSocketServerConnectionObserverTest, when_reader_is_open_websocket_is_kept_alive_after_connection_close)
+{
+    auto reader = webSocket->ReceiveStream();
+
+    EXPECT_CALL(connection, AbortAndDestroyMock());
+    EXPECT_CALL(connectionObserver, Detaching());
+    webSocket->AbortAndDestroy();
+
+    reader = nullptr;
+}
+
+TEST_F(WebSocketServerConnectionObserverTest, when_writer_is_open_websocket_is_kept_alive_after_connection_close)
+{
+    infra::SharedPtr<infra::StreamWriter> streamWriter;
+    EXPECT_CALL(connectionObserver, SendStreamAvailable(testing::_)).WillOnce(testing::SaveArg<0>(&streamWriter));
+    webSocket->RequestSendStream(1);
+
+    EXPECT_CALL(connection, AbortAndDestroyMock());
+    EXPECT_CALL(connectionObserver, Detaching());
+    webSocket->AbortAndDestroy();
+
+    streamWriter = nullptr;
 }

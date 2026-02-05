@@ -1,5 +1,8 @@
 #include "infra/syntax/Json.hpp"
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <cstdint>
+#include <limits>
 
 TEST(BasicUsageTest, object_with_some_values)
 {
@@ -262,7 +265,7 @@ TEST(JsonObjectIteratorTest, get_second_value_from_iterator)
     infra::JsonObjectIterator iterator(object.begin());
 
     ++iterator;
-    EXPECT_EQ("second_value", iterator->value.Get<infra::JsonString>());
+    EXPECT_EQ("second_value", std::get<infra::JsonString>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_string_value_from_iterator)
@@ -270,7 +273,7 @@ TEST(JsonObjectIteratorTest, get_string_value_from_iterator)
     infra::JsonObject object(R"({ "key" : "value" })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ("value", iterator->value.Get<infra::JsonString>());
+    EXPECT_EQ("value", std::get<infra::JsonString>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_integer_value_from_iterator)
@@ -278,7 +281,7 @@ TEST(JsonObjectIteratorTest, get_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 42 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(42, iterator->value.Get<int32_t>());
+    EXPECT_EQ(42, std::get<int32_t>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_maximum_integer_value_from_iterator)
@@ -286,7 +289,7 @@ TEST(JsonObjectIteratorTest, get_maximum_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 2147483647 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(2147483647, iterator->value.Get<int32_t>());
+    EXPECT_EQ(2147483647, std::get<int32_t>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_minimum_integer_value_from_iterator)
@@ -294,7 +297,7 @@ TEST(JsonObjectIteratorTest, get_minimum_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : -2147483648 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(-static_cast<int64_t>(2147483648), iterator->value.Get<int32_t>());
+    EXPECT_EQ(-static_cast<int64_t>(2147483648), std::get<int32_t>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_bigger_integer_value_from_iterator)
@@ -302,7 +305,7 @@ TEST(JsonObjectIteratorTest, get_bigger_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 123456789012 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonBiggerInt(123456789012, false), iterator->value.Get<infra::JsonBiggerInt>());
+    EXPECT_EQ(infra::JsonBiggerInt(123456789012, false), std::get<infra::JsonBiggerInt>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_maximum_bigger_integer_value_from_iterator)
@@ -310,7 +313,7 @@ TEST(JsonObjectIteratorTest, get_maximum_bigger_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 18446744073709551615 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonBiggerInt(18446744073709551615u, false), iterator->value.Get<infra::JsonBiggerInt>());
+    EXPECT_EQ(infra::JsonBiggerInt(18446744073709551615u, false), std::get<infra::JsonBiggerInt>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_minimum_bigger_integer_value_from_iterator)
@@ -318,7 +321,7 @@ TEST(JsonObjectIteratorTest, get_minimum_bigger_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : -18446744073709551615 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonBiggerInt(18446744073709551615u, true), iterator->value.Get<infra::JsonBiggerInt>());
+    EXPECT_EQ(infra::JsonBiggerInt(18446744073709551615u, true), std::get<infra::JsonBiggerInt>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_negative_bigger_integer_value_from_iterator)
@@ -326,7 +329,7 @@ TEST(JsonObjectIteratorTest, get_negative_bigger_integer_value_from_iterator)
     infra::JsonObject object(R"({ "key" : -123456789012 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonBiggerInt(123456789012, true), iterator->value.Get<infra::JsonBiggerInt>());
+    EXPECT_EQ(infra::JsonBiggerInt(123456789012, true), std::get<infra::JsonBiggerInt>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_float_value_from_iterator)
@@ -334,7 +337,7 @@ TEST(JsonObjectIteratorTest, get_float_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 42.1 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(42, 100000000, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(42, 100000000, false), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_two_float_values_from_iterator)
@@ -342,9 +345,9 @@ TEST(JsonObjectIteratorTest, get_two_float_values_from_iterator)
     infra::JsonObject object(R"({ "key" : 42.1, "key2" : 18.7 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(42, 100000000, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(42, 100000000, false), std::get<infra::JsonFloat>(iterator->value));
     ++iterator;
-    EXPECT_EQ(infra::JsonFloat(18, 700000000, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(18, 700000000, false), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_negative_float_value_from_iterator)
@@ -352,7 +355,7 @@ TEST(JsonObjectIteratorTest, get_negative_float_value_from_iterator)
     infra::JsonObject object(R"({ "key" : -42.1 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(42, 100000000, true), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(42, 100000000, true), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_nano_float_value_from_iterator)
@@ -360,7 +363,7 @@ TEST(JsonObjectIteratorTest, get_nano_float_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 0.000000001 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(0, 1, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(0, 1, false), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_micro_float_value_from_iterator)
@@ -368,7 +371,7 @@ TEST(JsonObjectIteratorTest, get_micro_float_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 0.000001 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(0, 1000, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(0, 1000, false), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_milli_float_value_from_iterator)
@@ -376,7 +379,7 @@ TEST(JsonObjectIteratorTest, get_milli_float_value_from_iterator)
     infra::JsonObject object(R"({ "key" : 0.001 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(0, 1000000, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(0, 1000000, false), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_float_value_with_more_than_nine_digits_in_fraction_from_iterator)
@@ -384,7 +387,7 @@ TEST(JsonObjectIteratorTest, get_float_value_with_more_than_nine_digits_in_fract
     infra::JsonObject object(R"({ "key" : 0.1234567890123 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(0, 123456789, false), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(0, 123456789, false), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_small_negative_float_value_from_iterator)
@@ -392,7 +395,7 @@ TEST(JsonObjectIteratorTest, get_small_negative_float_value_from_iterator)
     infra::JsonObject object(R"({ "key" : -0.001 })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(infra::JsonFloat(0, 1000000, true), iterator->value.Get<infra::JsonFloat>());
+    EXPECT_EQ(infra::JsonFloat(0, 1000000, true), std::get<infra::JsonFloat>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, dont_get_negative_float_value_from_iterator)
@@ -408,7 +411,7 @@ TEST(JsonObjectIteratorTest, get_true_value_from_iterator)
     infra::JsonObject object(R"({ "key" : true })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(true, iterator->value.Get<bool>());
+    EXPECT_EQ(true, std::get<bool>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_false_value_from_iterator)
@@ -416,7 +419,7 @@ TEST(JsonObjectIteratorTest, get_false_value_from_iterator)
     infra::JsonObject object(R"({ "key" : false })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(false, iterator->value.Get<bool>());
+    EXPECT_EQ(false, std::get<bool>(iterator->value));
 }
 
 TEST(JsonObjectIteratorTest, get_object_value_from_iterator)
@@ -424,7 +427,7 @@ TEST(JsonObjectIteratorTest, get_object_value_from_iterator)
     infra::JsonObject object(R"({ "key" : { "bla" } })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(R"({ "bla" })", iterator->value.Get<infra::JsonObject>().ObjectString());
+    EXPECT_EQ(R"({ "bla" })", std::get<infra::JsonObject>(iterator->value).ObjectString());
 }
 
 TEST(JsonObjectIteratorTest, get_object_value_with_nested_object_from_iterator)
@@ -432,7 +435,7 @@ TEST(JsonObjectIteratorTest, get_object_value_with_nested_object_from_iterator)
     infra::JsonObject object(R"({ "key" : { "bla" : { } } })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(R"({ "bla" : { } })", iterator->value.Get<infra::JsonObject>().ObjectString());
+    EXPECT_EQ(R"({ "bla" : { } })", std::get<infra::JsonObject>(iterator->value).ObjectString());
 }
 
 TEST(JsonObjectIteratorTest, get_array_value_from_iterator)
@@ -440,7 +443,7 @@ TEST(JsonObjectIteratorTest, get_array_value_from_iterator)
     infra::JsonObject object(R"({ "key" : [ "bla" ] })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(R"([ "bla" ])", iterator->value.Get<infra::JsonArray>().ObjectString());
+    EXPECT_EQ(R"([ "bla" ])", std::get<infra::JsonArray>(iterator->value).ObjectString());
 }
 
 TEST(JsonObjectIteratorTest, get_object_value_from_iterator_with_error)
@@ -462,7 +465,7 @@ TEST(JsonObjectIteratorTest, get_array_value_with_nested_array_from_iterator)
     infra::JsonObject object(R"({ "key" : [ "bla", [ ] ] })");
     infra::JsonObjectIterator iterator(object.begin());
 
-    EXPECT_EQ(R"([ "bla", [ ] ])", iterator->value.Get<infra::JsonArray>().ObjectString());
+    EXPECT_EQ(R"([ "bla", [ ] ])", std::get<infra::JsonArray>(iterator->value).ObjectString());
 }
 
 TEST(JsonObjectTest, empty_object_construction)
@@ -498,7 +501,7 @@ TEST(JsonObjectTest, iterate_over_object)
     infra::JsonObject object(R"({ "key" : "value" })");
 
     for (auto keyValue : object)
-        EXPECT_EQ("value", keyValue.value.Get<infra::JsonString>());
+        EXPECT_EQ("value", std::get<infra::JsonString>(keyValue.value));
 }
 
 TEST(JsonObjectTest, incorrect_object_sets_error)
@@ -568,7 +571,7 @@ TEST(JsonObjectTest, get_none_when_optional_string_is_absent)
 {
     infra::JsonObject object(R"({ })");
 
-    EXPECT_EQ(infra::none, object.GetOptionalString("key"));
+    EXPECT_EQ(std::nullopt, object.GetOptionalString("key"));
     EXPECT_FALSE(object.Error());
 }
 
@@ -584,7 +587,7 @@ TEST(JsonObjectTest, get_none_when_optional_boolean_is_absent)
 {
     infra::JsonObject object(R"({ })");
 
-    EXPECT_EQ(infra::none, object.GetOptionalBoolean("key"));
+    EXPECT_EQ(std::nullopt, object.GetOptionalBoolean("key"));
     EXPECT_FALSE(object.Error());
 }
 
@@ -592,7 +595,7 @@ TEST(JsonObjectTest, get_none_when_optional_boolean_is_absent_but_key_is_present
 {
     infra::JsonObject object(R"({ "key" : "value" })");
 
-    EXPECT_EQ(infra::none, object.GetOptionalBoolean("key"));
+    EXPECT_EQ(std::nullopt, object.GetOptionalBoolean("key"));
     EXPECT_FALSE(object.Error());
 }
 
@@ -608,7 +611,7 @@ TEST(JsonObjectTest, get_none_when_optional_object_is_absent)
 {
     infra::JsonObject object(R"({ })");
 
-    EXPECT_EQ(infra::none, object.GetOptionalObject("key"));
+    EXPECT_EQ(std::nullopt, object.GetOptionalObject("key"));
     EXPECT_FALSE(object.Error());
 }
 
@@ -616,7 +619,7 @@ TEST(JsonObjectTest, get_none_when_optional_array_is_absent)
 {
     infra::JsonObject object(R"({ })");
 
-    EXPECT_EQ(infra::none, object.GetOptionalArray("key"));
+    EXPECT_EQ(std::nullopt, object.GetOptionalArray("key"));
     EXPECT_FALSE(object.Error());
 }
 
@@ -712,6 +715,175 @@ TEST(JsonObjectTest, null_value)
     EXPECT_FALSE(object.Error());
 }
 
+TEST(JsonObjectTest, integer_conversion_uint8)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":0})" }.GetIntegerAs<uint8_t>("key1"), testing::Eq(std::numeric_limits<uint8_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":255})" }.GetIntegerAs<uint8_t>("key1"), testing::Eq(std::numeric_limits<uint8_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_uint8_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-1)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":256)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<uint8_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<uint8_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_int8)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":-128})" }.GetIntegerAs<int8_t>("key1"), testing::Eq(std::numeric_limits<int8_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":127})" }.GetIntegerAs<int8_t>("key1"), testing::Eq(std::numeric_limits<int8_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_int8_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-129)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":128)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<int8_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<int8_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_uint16)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":0})" }.GetIntegerAs<uint16_t>("key1"), testing::Eq(std::numeric_limits<uint16_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":65535})" }.GetIntegerAs<uint16_t>("key1"), testing::Eq(std::numeric_limits<uint16_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_uint16_t_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-1)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":65536)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<uint16_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<uint16_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_int16)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":-32768})" }.GetIntegerAs<int16_t>("key1"), testing::Eq(std::numeric_limits<int16_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":32767})" }.GetIntegerAs<int16_t>("key1"), testing::Eq(std::numeric_limits<int16_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_int16_t_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-32769)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":32768)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<int16_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<int16_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_uint32)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":0})" }.GetIntegerAs<uint32_t>("key1"), testing::Eq(std::numeric_limits<uint32_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":4294967295})" }.GetIntegerAs<uint32_t>("key1"), testing::Eq(std::numeric_limits<uint32_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_uint32_t_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-1)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":4294967296)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<uint32_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<uint32_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_int32)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":-2147483648})" }.GetIntegerAs<int32_t>("key1"), testing::Eq(std::numeric_limits<int32_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":2147483647})" }.GetIntegerAs<int32_t>("key1"), testing::Eq(std::numeric_limits<int32_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_int32_t_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-2147483649)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":2147483648)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<int32_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<int32_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_uint64)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":0})" }.GetIntegerAs<uint64_t>("key1"), testing::Eq(std::numeric_limits<uint64_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":18446744073709551615})" }.GetIntegerAs<uint64_t>("key1"), testing::Eq(std::numeric_limits<uint64_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_uint64_t_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-1)" };
+    // testing for a overflow of uint64_t max is not possible
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<uint64_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_int64)
+{
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":-9223372036854775808})" }.GetIntegerAs<int64_t>("key1"), testing::Eq(std::numeric_limits<int64_t>::min()));
+    EXPECT_THAT(infra::JsonObject{ R"({"key1":9223372036854775807})" }.GetIntegerAs<int64_t>("key1"), testing::Eq(std::numeric_limits<int64_t>::max()));
+}
+
+TEST(JsonObjectTest, integer_conversion_int64_t_out_of_bounds)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"min":-9223372036854775809)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"max":9223372036854775808)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<int64_t>("min"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<int64_t>("max"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_not_a_number)
+{
+    auto jsonObject = infra::JsonObject{ R"({"key":"not-a-number")" };
+
+    EXPECT_THAT(jsonObject.GetIntegerAs<int64_t>("key"), testing::Eq(0));
+    EXPECT_THAT(jsonObject.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_unsigned_overflow)
+{
+    auto jsonObject = infra::JsonObject{ R"({"key":18446744073709551615)" };
+
+    EXPECT_THAT(jsonObject.GetIntegerAs<int64_t>("key"), testing::Eq(0));
+    EXPECT_THAT(jsonObject.Error(), testing::IsTrue());
+}
+
+TEST(JsonObjectTest, integer_conversion_signed_overflow)
+{
+    auto jsonObjectMin = infra::JsonObject{ R"({"key":-9223372036854775808)" };
+    auto jsonObjectMax = infra::JsonObject{ R"({"key":9223372036854775807)" };
+
+    EXPECT_THAT(jsonObjectMin.GetIntegerAs<int8_t>("key"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMin.Error(), testing::IsTrue());
+
+    EXPECT_THAT(jsonObjectMax.GetIntegerAs<int8_t>("key"), testing::Eq(0));
+    EXPECT_THAT(jsonObjectMax.Error(), testing::IsTrue());
+}
+
 TEST(JsonArrayIteratorTest, empty_array_iterator_compares_equal_to_end)
 {
     infra::JsonArray jsonArray(R"([ ])");
@@ -735,7 +907,7 @@ TEST(JsonObjectIteratorTest, get_value_from_iterator)
     infra::JsonArray jsonArray(R"([ "value" ])");
     infra::JsonArrayIterator iterator(jsonArray.begin());
 
-    EXPECT_EQ("value", iterator->Get<infra::JsonString>());
+    EXPECT_EQ("value", std::get<infra::JsonString>(*iterator));
 }
 
 TEST(JsonObjectIteratorTest, get_multiple_values_from_iterator)
@@ -743,9 +915,9 @@ TEST(JsonObjectIteratorTest, get_multiple_values_from_iterator)
     infra::JsonArray jsonArray(R"([ "value", true, { "subobject" } ])");
     infra::JsonArrayIterator iterator(jsonArray.begin());
 
-    EXPECT_EQ("value", (iterator++)->Get<infra::JsonString>());
-    EXPECT_EQ(true, (iterator++)->Get<bool>());
-    EXPECT_EQ(R"({ "subobject" })", (*iterator++).Get<infra::JsonObject>().ObjectString());
+    EXPECT_EQ("value", std::get<infra::JsonString>(*iterator++));
+    EXPECT_EQ(true, std::get<bool>(*iterator++));
+    EXPECT_EQ(R"({ "subobject" })", std::get<infra::JsonObject>(*iterator++).ObjectString());
 }
 
 TEST(JsonObjectIteratorTest, only_string_open)
@@ -776,7 +948,7 @@ TEST(JsonArrayTest, iterate_over_array)
     infra::JsonArray jsonArray(R"([ "value" ])");
 
     for (auto value : jsonArray)
-        EXPECT_EQ("value", value.Get<infra::JsonString>());
+        EXPECT_EQ("value", std::get<infra::JsonString>(value));
 
     EXPECT_EQ(1, std::distance(jsonArray.begin(), jsonArray.end()));
 }

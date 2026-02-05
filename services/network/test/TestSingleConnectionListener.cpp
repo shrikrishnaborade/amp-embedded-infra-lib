@@ -20,7 +20,7 @@ public:
         : public services::NewConnectionStrategy
     {
     public:
-        MOCK_METHOD(void, StopCurrentConnection, (services::SingleConnectionListener & listener), (override));
+        MOCK_METHOD(void, StopCurrentConnection, (void* listener), (override));
         MOCK_METHOD(void, StartNewConnection, (), (override));
     };
 
@@ -73,9 +73,9 @@ public:
         ConnectionAccepted();
     }
 
-    infra::Creator<services::ConnectionObserver, ConnectionObserverStorage, void(services::IPAddress address)> connectionObserverCreator{ [this](infra::Optional<ConnectionObserverStorage>& connectionObserver, services::IPAddress address)
+    infra::Creator<services::ConnectionObserver, ConnectionObserverStorage, void(services::IPAddress address)> connectionObserverCreator{ [this](std::optional<ConnectionObserverStorage>& connectionObserver, services::IPAddress address)
         {
-            connectionObserver.Emplace(connectionObserverMock, address);
+            connectionObserver.emplace(connectionObserverMock, address);
         } };
 
     testing::StrictMock<services::ConnectionFactoryMock> connectionFactory;
@@ -178,22 +178,39 @@ TEST_F(SingleConnectionListenerTest, Stop_aborts_connection)
     connection.Detach();
 }
 
+TEST_F(SingleConnectionListenerTest, Stop_does_not_abort_stopped_connection)
+{
+    AcceptConnection();
+
+    infra::MockCallback<void()> onDone;
+    connection.Detach();
+
+    listener.Stop([&onDone]()
+        {
+            onDone.callback();
+        });
+
+    EXPECT_CALL(connectionObserverMock, Destructed());
+    EXPECT_CALL(onDone, callback());
+    connectionObserver = nullptr;
+}
+
 TEST_F(SingleConnectionListenerTest, NewConnectionStrategy)
 {
     listener.SetNewConnectionStrategy(newConnectionStrategy);
 
-    EXPECT_CALL(newConnectionStrategy, StopCurrentConnection(testing::Ref(listener)));
+    EXPECT_CALL(newConnectionStrategy, StopCurrentConnection(&listener));
     AcceptConnection();
     EXPECT_CALL(newConnectionStrategy, StartNewConnection());
-    listener.StopCurrentConnection(listener);
+    listener.StopCurrentConnection(&listener);
     listener.StartNewConnection();
     connectionObserver = nullptr;
 
-    EXPECT_CALL(newConnectionStrategy, StopCurrentConnection(testing::Ref(listener)));
+    EXPECT_CALL(newConnectionStrategy, StopCurrentConnection(&listener));
     ConnectionAccepted();
 
     EXPECT_CALL(connection, CloseAndDestroy());
-    listener.StopCurrentConnection(listener);
+    listener.StopCurrentConnection(&listener);
 
     EXPECT_CALL(connectionObserverMock, Destructed());
     EXPECT_CALL(newConnectionStrategy, StartNewConnection());

@@ -8,17 +8,23 @@
 namespace services
 {
     WebSocketServerConnectionObserver::WebSocketServerConnectionObserver(infra::BoundedVector<uint8_t>& sendBuffer, infra::BoundedDeque<uint8_t>& receiveBuffer)
-        : receivingState(infra::InPlaceType<ReceivingStateReceiveHeader>(), *this)
-        , sendingState(infra::InPlaceType<SendingStateIdle>(), *this)
+        : receivingState(std::in_place_type_t<ReceivingStateReceiveHeader>(), *this)
+        , sendingState(std::in_place_type_t<SendingStateIdle>(), *this)
         , receiveBuffer(receiveBuffer)
         , sendBuffer(sendBuffer)
         , streamReader([this]()
               {
-                  ReceiveStreamAllocatable();
+                  infra::WeakPtr<void> checkAlive = keepAliveWhileReading;
+                  keepAliveWhileReading = nullptr;
+                  if (checkAlive.lock() && services::ConnectionObserver::IsAttached())
+                      ReceiveStreamAllocatable();
               })
         , streamWriter([this]()
               {
-                  SendStreamAllocatable();
+                  infra::WeakPtr<void> checkAlive = keepAliveWhileWriting;
+                  keepAliveWhileWriting = nullptr;
+                  if (checkAlive.lock())
+                      SendStreamAllocatable();
               })
     {}
 
@@ -34,13 +40,14 @@ namespace services
 
     void WebSocketServerConnectionObserver::DataReceived()
     {
-        auto startSize = receiveBuffer.size();
-
         receivingState->DataReceived();
         sendingState->CheckForSomethingToDo();
 
-        if (startSize != receiveBuffer.size())
+        if (moreDataReceived)
+        {
+            moreDataReceived = false;
             services::Connection::Observer().DataReceived();
+        }
     }
 
     void WebSocketServerConnectionObserver::Detaching()
@@ -66,7 +73,8 @@ namespace services
     infra::SharedPtr<infra::StreamReaderWithRewinding> WebSocketServerConnectionObserver::ReceiveStream()
     {
         assert(!streamReader);
-        return streamReader.Emplace(infra::inPlace, receiveBuffer, receiveBuffer.size());
+        keepAliveWhileReading = Subject().ObserverPtr();
+        return streamReader.Emplace(std::in_place, receiveBuffer, receiveBuffer.size());
     }
 
     void WebSocketServerConnectionObserver::AckReceived()
@@ -90,6 +98,12 @@ namespace services
     void WebSocketServerConnectionObserver::ReceiveStreamAllocatable()
     {
         receivingState->DataReceived();
+
+        if (moreDataReceived)
+        {
+            moreDataReceived = false;
+            services::Connection::Observer().DataReceived();
+        }
     }
 
     void WebSocketServerConnectionObserver::SendStreamAllocatable()
@@ -143,7 +157,10 @@ namespace services
     void WebSocketServerConnectionObserver::TryAllocateSendStream()
     {
         if (streamWriter.Allocatable() && sendBuffer.empty() && requestedSendSize != 0)
-            services::Connection::Observer().SendStreamAvailable(streamWriter.Emplace(infra::inPlace, sendBuffer, std::exchange(requestedSendSize, 0)));
+        {
+            keepAliveWhileWriting = Subject().ObserverPtr();
+            services::Connection::Observer().SendStreamAvailable(streamWriter.Emplace(std::in_place, sendBuffer, std::exchange(requestedSendSize, 0)));
+        }
     }
 
     void WebSocketServerConnectionObserver::ReceivingState::DataReceived()
@@ -228,6 +245,7 @@ namespace services
 
             while (growSize != 0)
             {
+                connection.moreDataReceived = true;
                 auto range = connection.receiveBuffer.contiguous_range(connection.receiveBuffer.end() - growSize);
                 stream >> range;
                 growSize -= range.size();

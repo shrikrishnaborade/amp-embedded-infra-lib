@@ -8,7 +8,7 @@
 #include "infra/util/ByteRange.hpp"
 #include "infra/util/Function.hpp"
 #include "infra/util/IntegerNormalization.hpp"
-#include "infra/util/Optional.hpp"
+#include <optional>
 #include <type_traits>
 
 namespace infra
@@ -254,6 +254,7 @@ namespace infra
         explicit AsAsciiHelper(infra::ConstByteRange data);
 
         friend infra::TextOutputStream& operator<<(infra::TextOutputStream& stream, const AsAsciiHelper& asAsciiHelper);
+        friend infra::TextOutputStream& operator<<(TextOutputStream&& stream, const AsAsciiHelper& asAsciiHelper);
 
     private:
         infra::ConstByteRange data;

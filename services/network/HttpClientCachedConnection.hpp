@@ -2,10 +2,10 @@
 #define SERVICES_HTTP_CLIENT_CACHED_CONNECTION_HPP
 
 #include "infra/timer/Timer.hpp"
-#include "infra/util/Optional.hpp"
 #include "infra/util/SharedPtr.hpp"
 #include "services/network/HttpClient.hpp"
 #include "services/util/Sha256.hpp"
+#include <optional>
 
 namespace services
 {
@@ -26,8 +26,10 @@ namespace services
         void Connect(infra::BoundedConstString requestTarget, HttpHeaders headers = noHeaders) override;
         void Options(infra::BoundedConstString requestTarget, HttpHeaders headers = noHeaders) override;
         void Post(infra::BoundedConstString requestTarget, infra::BoundedConstString content, HttpHeaders headers = noHeaders) override;
+        void Post(infra::BoundedConstString requestTarget, std::size_t contentSize, HttpHeaders headers = noHeaders) override;
         void Post(infra::BoundedConstString requestTarget, HttpHeaders headers = noHeaders) override;
         void Put(infra::BoundedConstString requestTarget, infra::BoundedConstString content, HttpHeaders headers = noHeaders) override;
+        void Put(infra::BoundedConstString requestTarget, std::size_t contentSize, HttpHeaders headers = noHeaders) override;
         void Put(infra::BoundedConstString requestTarget, HttpHeaders headers = noHeaders) override;
         void Patch(infra::BoundedConstString requestTarget, infra::BoundedConstString content, HttpHeaders headers = noHeaders) override;
         void Patch(infra::BoundedConstString requestTarget, HttpHeaders headers = noHeaders) override;
@@ -106,7 +108,7 @@ namespace services
         HttpClientObserverFactory* clientObserverFactory = nullptr;
         infra::IntrusiveList<HttpClientObserverFactory> waitingClientObserverFactories;
 
-        infra::Optional<HttpClientCachedConnection> client;
+        std::optional<HttpClientCachedConnection> client;
         infra::AccessedBySharedPtr clientPtr{ [this]()
             {
                 ClientPtrExpired();

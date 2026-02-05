@@ -2,45 +2,6 @@
 
 namespace services
 {
-    FlashMultipleAccessMaster::FlashMultipleAccessMaster(hal::Flash& master)
-        : master(master)
-    {}
-
-    uint32_t FlashMultipleAccessMaster::NumberOfSectors() const
-    {
-        return master.NumberOfSectors();
-    }
-
-    uint32_t FlashMultipleAccessMaster::SizeOfSector(uint32_t sectorIndex) const
-    {
-        return master.SizeOfSector(sectorIndex);
-    }
-
-    uint32_t FlashMultipleAccessMaster::SectorOfAddress(uint32_t address) const
-    {
-        return master.SectorOfAddress(address);
-    }
-
-    uint32_t FlashMultipleAccessMaster::AddressOfSector(uint32_t sectorIndex) const
-    {
-        return master.AddressOfSector(sectorIndex);
-    }
-
-    void FlashMultipleAccessMaster::WriteBuffer(infra::ConstByteRange buffer, uint32_t address, infra::Function<void()> onDone)
-    {
-        master.WriteBuffer(buffer, address, onDone);
-    }
-
-    void FlashMultipleAccessMaster::ReadBuffer(infra::ByteRange buffer, uint32_t address, infra::Function<void()> onDone)
-    {
-        master.ReadBuffer(buffer, address, onDone);
-    }
-
-    void FlashMultipleAccessMaster::EraseSectors(uint32_t beginIndex, uint32_t endIndex, infra::Function<void()> onDone)
-    {
-        master.EraseSectors(beginIndex, endIndex, onDone);
-    }
-
     FlashMultipleAccess::FlashMultipleAccess(FlashMultipleAccessMaster& master)
         : master(master)
         , claimer(master)
@@ -69,7 +30,7 @@ namespace services
     void FlashMultipleAccess::WriteBuffer(infra::ConstByteRange buffer, uint32_t address, infra::Function<void()> onDone)
     {
         this->onDone = onDone;
-        claimer.Claim([this, buffer, address, onDone]()
+        claimer.Claim([this, buffer, address]()
             {
                 master.WriteBuffer(buffer, address, [this]()
                     {
@@ -82,7 +43,7 @@ namespace services
     void FlashMultipleAccess::ReadBuffer(infra::ByteRange buffer, uint32_t address, infra::Function<void()> onDone)
     {
         this->onDone = onDone;
-        claimer.Claim([this, buffer, address, onDone]()
+        claimer.Claim([this, buffer, address]()
             {
                 master.ReadBuffer(buffer, address, [this]()
                     {
@@ -95,7 +56,7 @@ namespace services
     void FlashMultipleAccess::EraseSectors(uint32_t beginIndex, uint32_t endIndex, infra::Function<void()> onDone)
     {
         this->onDone = onDone;
-        claimer.Claim([this, beginIndex, endIndex, onDone]()
+        claimer.Claim([this, beginIndex, endIndex]()
             {
                 master.EraseSectors(beginIndex, endIndex, [this]()
                     {

@@ -24,8 +24,10 @@ target_sources(services.util_test PRIVATE
     TestDebouncedButton.cpp
     TestDebugLed.cpp
     TestEchoOnSesame.cpp
-    $<$<BOOL:${EMIL_INCLUDE_MBEDTLS}>:TestEchoOnSesameSymmetricKey.cpp>
+    $<$<BOOL:${EMIL_INCLUDE_MBEDTLS}>:TestEchoPolicyDiffieHellman.cpp>
+    $<$<BOOL:${EMIL_INCLUDE_MBEDTLS}>:TestEchoPolicySymmetricKey.cpp>
     TestFlashAlign.cpp
+    TestFlashEcho.cpp
     TestFlashMultipleAccess.cpp
     TestFlashQuadSpiCypressFll.cpp
     TestFlashQuadSpiMicronN25q.cpp
@@ -44,6 +46,8 @@ target_sources(services.util_test PRIVATE
     $<$<BOOL:${EMIL_INCLUDE_MBEDTLS}>:TestSesameSecured.cpp>
     TestSesameWindowed.cpp
     TestSignalLed.cpp
+    TestSleepableFlashSpi.cpp
+    TestSleepOnInactivityFlashDecorator.cpp
     TestSpiMasterWithChipSelect.cpp
     TestSpiMultipleAccess.cpp
     TestTerminal.cpp

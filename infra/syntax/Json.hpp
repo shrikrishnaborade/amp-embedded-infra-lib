@@ -3,9 +3,11 @@
 
 #include "infra/stream/OutputStream.hpp"
 #include "infra/util/BoundedString.hpp"
-#include "infra/util/Optional.hpp"
+#include "infra/util/Compatibility.hpp"
 #include "infra/util/ReverseRange.hpp"
-#include "infra/util/Variant.hpp"
+#include <cstdint>
+#include <optional>
+#include <variant>
 
 #ifdef EMIL_HOST_BUILD
 #include <string>
@@ -240,7 +242,7 @@ namespace infra
             bool value;
         };
 
-        using Token = infra::Variant<End, Error, Colon, Comma, Dot, Null, LeftBrace, RightBrace, LeftBracket, RightBracket, String, JsonBiggerInt, JsonFloat, Boolean>;
+        using Token = std::variant<End, Error, Colon, Comma, Dot, Null, LeftBrace, RightBrace, LeftBracket, RightBracket, String, JsonBiggerInt, JsonFloat, Boolean>;
     }
 
     class JsonTokenizer
@@ -270,7 +272,7 @@ namespace infra
     class JsonObject;
     class JsonArray;
 
-    using JsonValue = infra::Variant<bool, int32_t, JsonBiggerInt, JsonString, JsonFloat, JsonObject, JsonArray>;
+    using JsonValue = std::variant<bool, int32_t, JsonBiggerInt, JsonString, JsonFloat, JsonObject, JsonArray>;
 
     class JsonObject
     {
@@ -293,12 +295,15 @@ namespace infra
         JsonArray GetArray(infra::BoundedConstString key);
         JsonValue GetValue(infra::BoundedConstString key);
 
-        infra::Optional<JsonString> GetOptionalString(infra::BoundedConstString key);
-        infra::Optional<JsonFloat> GetOptionalFloat(infra::BoundedConstString key);
-        infra::Optional<bool> GetOptionalBoolean(infra::BoundedConstString key);
-        infra::Optional<int32_t> GetOptionalInteger(infra::BoundedConstString key);
-        infra::Optional<JsonObject> GetOptionalObject(infra::BoundedConstString key);
-        infra::Optional<JsonArray> GetOptionalArray(infra::BoundedConstString key);
+        template<class T>
+        T GetIntegerAs(infra::BoundedConstString key);
+
+        std::optional<JsonString> GetOptionalString(infra::BoundedConstString key);
+        std::optional<JsonFloat> GetOptionalFloat(infra::BoundedConstString key);
+        std::optional<bool> GetOptionalBoolean(infra::BoundedConstString key);
+        std::optional<int32_t> GetOptionalInteger(infra::BoundedConstString key);
+        std::optional<JsonObject> GetOptionalObject(infra::BoundedConstString key);
+        std::optional<JsonArray> GetOptionalArray(infra::BoundedConstString key);
 
         bool operator==(const JsonObject& other) const;
         bool operator!=(const JsonObject& other) const;
@@ -311,7 +316,10 @@ namespace infra
         template<class T>
         T GetValue(infra::BoundedConstString key);
         template<class T>
-        infra::Optional<T> GetOptionalValue(infra::BoundedConstString key);
+        std::optional<T> GetOptionalValue(infra::BoundedConstString key);
+
+        template<class T>
+        T ConvertValueTo(std::uint64_t value, bool negative);
 
     private:
         infra::BoundedConstString objectString;
@@ -355,14 +363,14 @@ namespace infra
     protected:
         explicit JsonIterator(infra::BoundedConstString objectString);
 
-        infra::Optional<JsonValue> ConvertValue(JsonToken::Token token);
+        std::optional<JsonValue> ConvertValue(JsonToken::Token token);
 
     private:
-        infra::Optional<JsonValue> ReadInteger(const JsonToken::Token& token);
-        infra::Optional<JsonValue> ReadObjectValue(const JsonToken::Token& token);
-        infra::Optional<JsonValue> ReadArrayValue(const JsonToken::Token& token);
-        infra::Optional<JsonToken::RightBrace> SearchObjectEnd();
-        infra::Optional<JsonToken::RightBracket> SearchArrayEnd();
+        std::optional<JsonValue> ReadInteger(const JsonToken::Token& token);
+        std::optional<JsonValue> ReadObjectValue(const JsonToken::Token& token);
+        std::optional<JsonValue> ReadArrayValue(const JsonToken::Token& token);
+        std::optional<JsonToken::RightBrace> SearchObjectEnd();
+        std::optional<JsonToken::RightBracket> SearchArrayEnd();
 
     protected:
         infra::BoundedConstString objectString;
@@ -492,7 +500,6 @@ namespace infra
         JsonValueArrayIterator() = default;
         JsonValueArrayIterator(const JsonArrayIterator& arrayIterator, const JsonArrayIterator& arrayEndIterator);
 
-    public:
         bool operator==(const JsonValueArrayIterator& other) const;
         bool operator!=(const JsonValueArrayIterator& other) const;
 
@@ -518,11 +525,48 @@ namespace infra
     ////    Implementation    ////
 
     template<class T>
+    T JsonObject::GetIntegerAs(infra::BoundedConstString key)
+    {
+        const auto jsonValue = GetValue(key);
+
+        if (std::holds_alternative<int32_t>(jsonValue))
+            return ConvertValueTo<T>(std::abs(static_cast<int64_t>(std::get<int32_t>(jsonValue))), std::get<int32_t>(jsonValue) < 0);
+        else if (std::holds_alternative<JsonBiggerInt>(jsonValue))
+            return ConvertValueTo<T>(std::get<JsonBiggerInt>(jsonValue).Value(), std::get<JsonBiggerInt>(jsonValue).Negative());
+
+        SetError();
+        return {};
+    }
+
+    template<class T>
+    T JsonObject::ConvertValueTo(std::uint64_t value, bool negative)
+    {
+        if (negative)
+        {
+            // the offset by one (twice) is to prevent overflow when converting a uint64_t
+            // to a int64_t, where the uint64_t value is equal to the absolute of
+            // std::numeric_limits<int64_t>::min(), which is equivalent to
+            // 9223372036854775808, which can't be represented in a int64_t.
+            // the offset first reduces the 9223372036854775808 to 9223372036854775807
+            // which can be represented in a int64_t, and the second offset is to
+            // convert -9223372036854775807 back to -9223372036854775808
+            const auto signedValue = (static_cast<int64_t>(value - 1) * -1) - 1;
+            if (signedValue < 0 && infra::in_range<T>(signedValue))
+                return static_cast<T>(signedValue);
+        }
+        else if (infra::in_range<T>(value))
+            return static_cast<T>(value);
+
+        SetError();
+        return {};
+    }
+
+    template<class T>
     JsonValueArrayIterator<T>::JsonValueArrayIterator(const JsonArrayIterator& arrayIterator, const JsonArrayIterator& arrayEndIterator)
         : arrayIterator(arrayIterator)
         , arrayEndIterator(arrayEndIterator)
     {
-        if (this->arrayIterator != arrayEndIterator && !this->arrayIterator->template Is<T>())
+        if (this->arrayIterator != arrayEndIterator && !std::holds_alternative<T>(*this->arrayIterator))
             this->arrayIterator.SetError();
     }
 
@@ -541,13 +585,13 @@ namespace infra
     template<class T>
     T JsonValueArrayIterator<T>::operator*() const
     {
-        return arrayIterator->Get<T>();
+        return std::get<T>(*arrayIterator);
     }
 
     template<class T>
     const T* JsonValueArrayIterator<T>::operator->() const
     {
-        return &arrayIterator->Get<T>();
+        return &std::get<T>(*arrayIterator);
     }
 
     template<class T>
@@ -555,7 +599,7 @@ namespace infra
     {
         ++arrayIterator;
 
-        if (arrayIterator != arrayEndIterator && !arrayIterator->Is<T>())
+        if (arrayIterator != arrayEndIterator && !std::holds_alternative<T>(*arrayIterator))
             arrayIterator.SetError();
 
         return *this;

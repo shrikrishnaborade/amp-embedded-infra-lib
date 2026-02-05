@@ -230,19 +230,19 @@ namespace services
 
     void MdnsClient::SendQuery(MdnsQuery& query)
     {
-        assert(activeMdnsQuery == infra::none);
-        activeMdnsQuery.Emplace(*this, datagramFactory, multicast, query);
+        assert(activeMdnsQuery == std::nullopt);
+        activeMdnsQuery.emplace(*this, datagramFactory, multicast, query);
     }
 
     void MdnsClient::ActiveQueryDone()
     {
-        activeMdnsQuery = infra::none;
+        activeMdnsQuery.reset();
         TrySendNextQuery();
     }
 
     bool MdnsClient::IsActivelyQuerying()
     {
-        return activeMdnsQuery != infra::none;
+        return activeMdnsQuery != std::nullopt;
     }
 
     void MdnsClient::CancelActiveQueryIfEqual(MdnsQuery& query)
@@ -252,7 +252,7 @@ namespace services
 
         if (activeMdnsQuery->IsCurrentQuery(query))
         {
-            activeMdnsQuery = infra::none;
+            activeMdnsQuery.reset();
             query.SetWaiting(false);
             TrySendNextQuery();
         }
@@ -392,14 +392,15 @@ namespace services
         DnsHostnamePartsStream hostnameParts(reader, hostnameStart);
 
         reconstructedHostname.clear();
+        infra::StringOutputStream reconstructedHostnameStream(reconstructedHostname, infra::noFail);
 
         while (!hostnameParts.Empty())
         {
-            reconstructedHostname += hostnameParts.Current();
+            reconstructedHostnameStream << hostnameParts.Current();
             hostnameParts.ConsumeCurrent();
 
             if (!hostnameParts.Empty())
-                reconstructedHostname += '.';
+                reconstructedHostnameStream << '.';
         }
 
         hostnameParts.ConsumeStream();

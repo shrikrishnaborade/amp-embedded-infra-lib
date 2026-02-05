@@ -1,5 +1,28 @@
 #include "services/network/ConnectionMbedTls.hpp"
 #include "infra/event/EventDispatcherWithWeakPtr.hpp"
+#include "infra/util/ReallyAssert.hpp"
+#include "mbedtls/platform_time.h"
+
+extern "C"
+{
+#ifndef EMIL_HOST_BUILD
+#ifdef MBEDTLS_PLATFORM_MS_TIME_ALT
+    mbedtls_ms_time_t mbedtls_ms_time(void)
+    {
+        return static_cast<mbedtls_ms_time_t>(std::chrono::duration_cast<std::chrono::milliseconds>(infra::Now(3).time_since_epoch()).count());
+    }
+#endif
+
+    int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t* olen)
+    {
+        really_assert(services::MbedTlsAdapter::InstanceSet());
+        services::MbedTlsAdapter::Instance().RandomDataGenerator().GenerateRandomData(infra::ByteRange(output, output + len));
+        *olen = len;
+
+        return 0;
+    }
+#endif
+}
 
 namespace services
 {
@@ -7,8 +30,8 @@ namespace services
         hal::SynchronousRandomDataGenerator& randomDataGenerator, const ParametersWorkaround& parameters)
         : createdObserver(std::move(createdObserver))
         , randomDataGenerator(randomDataGenerator)
-        , server(parameters.parameters.Is<ServerParameters>())
-        , clientSession(parameters.parameters.Is<ClientParameters>() ? &parameters.parameters.Get<ClientParameters>().session : nullptr)
+        , server(std::holds_alternative<ServerParameters>(parameters.parameters))
+        , clientSession(std::holds_alternative<ClientParameters>(parameters.parameters) ? &std::get<ClientParameters>(parameters.parameters).session : nullptr)
         , receiveReader([this]()
               {
                   keepAliveForReader = nullptr;
@@ -32,7 +55,7 @@ namespace services
         certificates.Config(sslConfig);
 
         if (server)
-            mbedtls_ssl_conf_session_cache(&sslConfig, &parameters.parameters.Get<ServerParameters>().serverCache, mbedtls_ssl_cache_get, mbedtls_ssl_cache_set);
+            mbedtls_ssl_conf_session_cache(&sslConfig, &std::get<ServerParameters>(parameters.parameters).serverCache, mbedtls_ssl_cache_get, mbedtls_ssl_cache_set);
 
         if (!server)
         {
@@ -41,6 +64,12 @@ namespace services
             mbedtls_ssl_conf_alpn_protocols(&sslConfig, protos);
             // client configuration only
             mbedtls_ssl_conf_session_tickets(&sslConfig, MBEDTLS_SSL_SESSION_TICKETS_ENABLED);
+#ifdef MBEDTLS_SSL_PROTO_TLS1_3
+            mbedtls_ssl_conf_tls13_key_exchange_modes(&sslConfig,
+                MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL |
+                    MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_PSK_EPHEMERAL);
+            mbedtls_ssl_conf_tls13_enable_signal_new_session_tickets(&sslConfig, MBEDTLS_SSL_TLS1_3_SIGNAL_NEW_SESSION_TICKETS_ENABLED);
+#endif
         }
     }
 
@@ -68,7 +97,7 @@ namespace services
 
     int ConnectionMbedTls::GetAuthMode(const ParametersWorkaround& parameters) const
     {
-        auto certificateValidation = server ? parameters.parameters.Get<ServerParameters>().certificateValidation : parameters.parameters.Get<ClientParameters>().certificateValidation;
+        auto certificateValidation = server ? std::get<ServerParameters>(parameters.parameters).certificateValidation : std::get<ClientParameters>(parameters.parameters).certificateValidation;
 
         switch (certificateValidation)
         {
@@ -137,6 +166,16 @@ namespace services
                 receiveBuffer.resize(newBufferStart);
                 break;
             }
+#ifdef MBEDTLS_SSL_PROTO_TLS1_3
+            else if (!server && result == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET)
+            {
+                result = clientSession->GetSession(&sslContext);
+                clientSession->Obtained();
+                assert(result == 0);
+
+                receiveBuffer.resize(newBufferStart);
+            }
+#endif
             else if (result == MBEDTLS_ERR_SSL_BAD_INPUT_DATA) // Precondition failure
             {
                 TlsReadFailure(result);
@@ -413,7 +452,7 @@ namespace services
     }
 
     ConnectionMbedTls::StreamWriterMbedTls::StreamWriterMbedTls(ConnectionMbedTls& connection, uint32_t size)
-        : infra::LimitedStreamWriter::WithOutput<infra::BoundedVectorStreamWriter>(infra::inPlace, connection.sendBuffer, size)
+        : infra::LimitedStreamWriter::WithOutput<infra::BoundedVectorStreamWriter>(std::in_place, connection.sendBuffer, size)
         , connection(connection)
     {}
 
@@ -801,5 +840,14 @@ namespace services
             waitingConnects.pop_front();
             connectionFactoryWithNameResolver.Connect(*this);
         }
+    }
+
+    MbedTlsAdapter::MbedTlsAdapter(hal::SynchronousRandomDataGenerator& randomDataGenerator)
+        : randomDataGenerator(randomDataGenerator)
+    {}
+
+    hal::SynchronousRandomDataGenerator& MbedTlsAdapter::RandomDataGenerator() const
+    {
+        return randomDataGenerator;
     }
 }

@@ -17,6 +17,8 @@ target_link_libraries(services.tracer PUBLIC
 target_sources(services.tracer PRIVATE
     GlobalTracer.cpp
     GlobalTracer.hpp
+    LogAndAbortTracer.cpp
+    LogAndAbortTracer.hpp
     StreamWriterOnSerialCommunication.cpp
     StreamWriterOnSerialCommunication.hpp
     StreamWriterOnSynchronousSerialCommunication.cpp
@@ -45,16 +47,27 @@ target_sources(services.tracer PRIVATE
     TracingReset.hpp
 )
 
+if (EMIL_INCLUDE_MBEDTLS OR NOT EMIL_EXTERNAL_MBEDTLS_TARGET STREQUAL "")
+    target_sources(services.tracer PRIVATE
+        TracingEchoInstantiationSecured.cpp
+        TracingEchoInstantiationSecured.hpp
+    )
+endif()
+
 if (EMIL_INCLUDE_SEGGER_RTT)
     target_link_libraries(services.tracer PUBLIC
         segger.rtt
     )
 
     target_sources(services.tracer PRIVATE
+        SerialCommunicationOnSeggerRtt.cpp
+        SerialCommunicationOnSeggerRtt.hpp
         StreamWriterOnSeggerRtt.cpp
         StreamWriterOnSeggerRtt.hpp
         TracerOnSeggerRttInfrastructure.cpp
         TracerOnSeggerRttInfrastructure.hpp
+        TracerOnSeggerRttSerialCommunicationInfrastructure.cpp
+        TracerOnSeggerRttSerialCommunicationInfrastructure.hpp
     )
 endif()
 

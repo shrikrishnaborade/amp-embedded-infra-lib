@@ -4,7 +4,7 @@
 #include "infra/stream/BoundedVectorOutputStream.hpp"
 #include "infra/util/IntrusiveForwardList.hpp"
 #include "infra/util/SharedOptional.hpp"
-#include "protobuf/echo/Echo.hpp"
+#include "protobuf/echo/EchoOnStreams.hpp"
 #include "services/tracer/Tracer.hpp"
 #include <type_traits>
 
@@ -93,6 +93,7 @@ namespace services
             void SendingMethod(uint32_t serviceId, uint32_t methodId, infra::ProtoLengthDelimited& contents) const;
             const ServiceTracer* FindService(uint32_t serviceId) const;
             void SerializationDone();
+            bool TraceOneMessage();
 
         private:
             class TracingWriter
@@ -173,7 +174,7 @@ namespace services
 
     protected:
         // Implementation of EchoOnStreams
-        infra::SharedPtr<MethodSerializer> GrantSend(ServiceProxy& proxy) override;
+        infra::SharedPtr<MethodSerializer> GrantSend(services::ServiceProxy& proxy) override;
         infra::SharedPtr<MethodDeserializer> StartingMethod(uint32_t serviceId, uint32_t methodId, infra::SharedPtr<MethodDeserializer>&& deserializer) override;
         void ReleaseDeserializer() override;
 
@@ -203,9 +204,9 @@ namespace services
     }
 
     template<class Descendant>
-    infra::SharedPtr<MethodSerializer> TracingEchoOnStreamsDescendant<Descendant>::GrantSend(ServiceProxy& proxy)
+    infra::SharedPtr<MethodSerializer> TracingEchoOnStreamsDescendant<Descendant>::GrantSend(services::ServiceProxy& proxy)
     {
-        return helper.GrantSend(Descendant::GrantSend(proxy));
+        return helper.GrantSend(Descendant::EchoOnStreams::GrantSend(proxy));
     }
 
     template<class Descendant>

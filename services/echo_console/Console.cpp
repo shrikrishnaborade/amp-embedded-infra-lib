@@ -1,6 +1,7 @@
 #include "services/echo_console/Console.hpp"
 #include "infra/stream/StdVectorOutputStream.hpp"
 #include "infra/stream/StringInputStream.hpp"
+#include "infra/util/Overloaded.hpp"
 #include "services/tracer/GlobalTracer.hpp"
 #include <cctype>
 #include <iomanip>
@@ -69,20 +70,6 @@ namespace application
         }
 
         bool Dot::operator!=(const Dot&) const
-        {
-            return false;
-        }
-
-        Underscore::Underscore(std::size_t index)
-            : index(index)
-        {}
-
-        bool Underscore::operator==(const Underscore&) const
-        {
-            return true;
-        }
-
-        bool Underscore::operator!=(const Underscore&) const
         {
             return false;
         }
@@ -191,20 +178,13 @@ namespace application
 
     namespace
     {
-        struct IndexOfVisitor
-            : public infra::StaticVisitor<std::size_t>
-        {
-            template<class T>
-            std::size_t operator()(const T& value) const
-            {
-                return value.index;
-            }
-        };
-
         std::size_t IndexOf(const ConsoleToken::Token& token)
         {
-            IndexOfVisitor visitor;
-            return infra::ApplyVisitor(visitor, token);
+            return std::visit([](const auto& token)
+                {
+                    return token.index;
+                },
+                token);
         }
     }
 
@@ -226,8 +206,6 @@ namespace application
                 return ConsoleToken::Comma(parseIndex++);
             else if (line[parseIndex] == '.')
                 return ConsoleToken::Dot(parseIndex++);
-            else if (line[parseIndex] == '_')
-                return ConsoleToken::Underscore(parseIndex++);
             else if (line[parseIndex] == '{')
                 return ConsoleToken::LeftBrace(parseIndex++);
             else if (line[parseIndex] == '}')
@@ -350,13 +328,28 @@ namespace application
             return ConsoleToken::String(tokenStart, identifier);
     }
 
+    services::EchoPolicy Console::defaultPolicy;
+
     Console::Console(EchoRoot& root, bool stopOnNetworkClose)
         : root(root)
+        , serviceProxyStub(*this)
         , eventDispatcherThread([this, stopOnNetworkClose]()
               {
                   RunEventDispatcher(stopOnNetworkClose);
               })
     {}
+
+    Console::~Console()
+    {
+        if (eventDispatcherThread.joinable())
+        {
+            infra::EventDispatcher::Instance().Schedule([]()
+                {
+                    throw Quit();
+                });
+            eventDispatcherThread.join();
+        }
+    }
 
     void Console::Run()
     {
@@ -381,6 +374,8 @@ namespace application
                     {
                         if (line == "list")
                             ListInterfaces();
+                        else if (line == "help")
+                            Help();
                         else
                             Process(line);
 
@@ -416,16 +411,36 @@ namespace application
         while (!reader.Empty())
             receivedData += infra::ByteRangeAsStdString(reader.ExtractContiguousRange(std::numeric_limits<std::size_t>::max()));
 
-        while (!receivedData.empty())
+        while (!serviceBusy && !receivedData.empty())
         {
             infra::StringInputStream data(receivedData, infra::softFail);
             infra::ProtoParser parser(data >> infra::data);
 
             auto serviceId = static_cast<uint32_t>(parser.GetVarInt());
-            auto [value, methodId] = parser.GetField();
+            auto messageStart = data.Reader().ConstructSaveMarker();
+            auto partialField = parser.GetPartialField().first;
+            auto size = std::holds_alternative<infra::PartialProtoLengthDelimited>(partialField) ? std::get<infra::PartialProtoLengthDelimited>(partialField).length : 0;
+            auto partialEnd = data.Reader().ConstructSaveMarker();
+            data.Reader().Rewind(messageStart);
+            infra::ProtoParser fullParser(data >> infra::data);
+            auto [value, methodId] = fullParser.GetField();
 
             if (data.Failed())
                 break;
+
+            Echo::NotifyObservers([this, serviceId, methodId, size, &data, partialEnd](auto& service)
+                {
+                    if (service.AcceptsService(serviceId))
+                    {
+                        auto methodDeserializer = service.StartMethod(serviceId, methodId, size, services::echoErrorPolicyAbort);
+                        data.Reader().Rewind(partialEnd);
+                        infra::SharedOptional<infra::LimitedStreamReaderWithRewinding> reader;
+                        methodDeserializer->MethodContents(reader.Emplace(data.Reader(), size));
+                        assert(reader.Allocatable());
+                        serviceBusy = true;
+                        methodDeserializer->ExecuteMethod();
+                    }
+                });
 
             for (const auto& service : root.services)
                 if (service->serviceId == serviceId)
@@ -433,7 +448,7 @@ namespace application
                     for (const auto& method : service->methods)
                         if (method.methodId == methodId)
                         {
-                            MethodReceived(*service, method, value.Get<infra::ProtoLengthDelimited>().Parser());
+                            MethodReceived(*service, method, std::get<infra::ProtoLengthDelimited>(value).Parser());
 
                             receivedData.erase(receivedData.begin(), receivedData.begin() + data.Reader().ConstructSaveMarker());
                             data.Failed();
@@ -448,6 +463,41 @@ namespace application
             ServiceNotFound(serviceId, methodId);
             receivedData.erase(receivedData.begin(), receivedData.begin() + data.Reader().ConstructSaveMarker());
         }
+    }
+
+    void Console::SetPolicy(services::EchoPolicy& policy)
+    {
+        this->policy = &policy;
+    }
+
+    void Console::RequestSend(services::ServiceProxy& serviceProxy)
+    {
+        infra::EventDispatcher::Instance().Schedule([this, &serviceProxy]()
+            {
+                policy->GrantingSend(serviceProxy);
+                auto serializer = serviceProxy.GrantSend(); // GrantSend may result in new requests being made, so execute this whole sequence on the event dispatcher
+                std::vector<uint8_t> data;
+                infra::SharedOptional<infra::StdVectorOutputStreamWriter> writer;
+                auto partlySent = serializer->Serialize(writer.Emplace(data));
+                assert(!partlySent);
+                assert(writer.Allocatable());
+                GetObserver().Send(infra::ByteRangeAsStdString(infra::MakeRange(data)));
+            });
+    }
+
+    void Console::ServiceDone()
+    {
+        serviceBusy = false;
+    }
+
+    void Console::CancelRequestSend(services::ServiceProxy& serviceProxy)
+    {
+        std::abort();
+    }
+
+    services::MethodSerializerFactory& Console::SerializerFactory()
+    {
+        return serializerFactory;
     }
 
     void Console::MethodReceived(const EchoService& service, const EchoMethod& method, infra::ProtoParser&& parser)
@@ -478,13 +528,13 @@ namespace application
         }
     }
 
-    void Console::PrintField(infra::Variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData, const EchoField& field, infra::ProtoParser& parser)
+    void Console::PrintField(std::variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData, const EchoField& field, infra::ProtoParser& parser)
     {
         class PrintFieldVisitor
             : public EchoFieldVisitor
         {
         public:
-            PrintFieldVisitor(infra::Variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData, infra::ProtoParser& parser, Console& console)
+            PrintFieldVisitor(std::variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData, infra::ProtoParser& parser, Console& console)
                 : fieldData(fieldData)
                 , parser(parser)
                 , console(console)
@@ -492,55 +542,55 @@ namespace application
 
             void VisitInt64(const EchoFieldInt64& field) override
             {
-                std::cout << static_cast<int32_t>(fieldData.Get<uint64_t>());
+                std::cout << static_cast<int32_t>(std::get<uint64_t>(fieldData));
             }
 
             void VisitUint64(const EchoFieldUint64& field) override
             {
-                std::cout << static_cast<int32_t>(fieldData.Get<uint64_t>());
+                std::cout << static_cast<int32_t>(std::get<uint64_t>(fieldData));
             }
 
             void VisitInt32(const EchoFieldInt32& field) override
             {
-                std::cout << static_cast<int32_t>(fieldData.Get<uint64_t>());
+                std::cout << static_cast<int32_t>(std::get<uint64_t>(fieldData));
             }
 
             void VisitFixed64(const EchoFieldFixed64& field) override
             {
-                std::cout << fieldData.Get<uint64_t>();
+                std::cout << std::get<uint64_t>(fieldData);
             }
 
             void VisitFixed32(const EchoFieldFixed32& field) override
             {
-                std::cout << fieldData.Get<uint32_t>();
+                std::cout << std::get<uint32_t>(fieldData);
             }
 
             void VisitBool(const EchoFieldBool& field) override
             {
-                std::cout << (fieldData.Get<uint64_t>() == 0 ? "false" : "true");
+                std::cout << (std::get<uint64_t>(fieldData) == 0 ? "false" : "true");
             }
 
             void VisitString(const EchoFieldString& field) override
             {
-                std::cout << fieldData.Get<infra::ProtoLengthDelimited>().GetStdString();
+                std::cout << std::get<infra::ProtoLengthDelimited>(fieldData).GetStdString();
             }
 
             void VisitUnboundedString(const EchoFieldUnboundedString& field) override
             {
-                std::cout << fieldData.Get<infra::ProtoLengthDelimited>().GetStdString();
+                std::cout << std::get<infra::ProtoLengthDelimited>(fieldData).GetStdString();
             }
 
             void VisitMessage(const EchoFieldMessage& field) override
             {
                 std::cout << "{ ";
-                infra::ProtoParser messageParser = fieldData.Get<infra::ProtoLengthDelimited>().Parser();
+                infra::ProtoParser messageParser = std::get<infra::ProtoLengthDelimited>(fieldData).Parser();
                 console.PrintMessage(*field.message, messageParser);
                 std::cout << " }";
             }
 
             void VisitBytes(const EchoFieldBytes& field) override
             {
-                std::vector<uint8_t> bytes = fieldData.Get<infra::ProtoLengthDelimited>().GetUnboundedBytes();
+                std::vector<uint8_t> bytes = std::get<infra::ProtoLengthDelimited>(fieldData).GetUnboundedBytes();
 
                 std::cout << "[";
                 for (auto byte : bytes)
@@ -550,7 +600,7 @@ namespace application
 
             void VisitUnboundedBytes(const EchoFieldUnboundedBytes& field) override
             {
-                std::vector<uint8_t> bytes = fieldData.Get<infra::ProtoLengthDelimited>().GetUnboundedBytes();
+                std::vector<uint8_t> bytes = std::get<infra::ProtoLengthDelimited>(fieldData).GetUnboundedBytes();
 
                 std::cout << "[";
                 for (auto byte : bytes)
@@ -560,28 +610,22 @@ namespace application
 
             void VisitUint32(const EchoFieldUint32& field) override
             {
-                std::cout << fieldData.Get<uint64_t>();
+                std::cout << std::get<uint64_t>(fieldData);
             }
 
             void VisitEnum(const EchoFieldEnum& field) override
             {
-                std::cout << fieldData.Get<uint64_t>();
+                std::cout << std::get<uint64_t>(fieldData);
             }
 
             void VisitSFixed64(const EchoFieldSFixed64& field) override
             {
-                std::cout << static_cast<int64_t>(fieldData.Get<uint64_t>());
+                std::cout << static_cast<int64_t>(std::get<uint64_t>(fieldData));
             }
 
             void VisitSFixed32(const EchoFieldSFixed32& field) override
             {
-                std::cout << static_cast<int32_t>(fieldData.Get<uint32_t>());
-            }
-
-            void VisitOptional(const EchoFieldOptional& field) override
-            {
-                PrintFieldVisitor visitor(fieldData, parser, console);
-                field.type->Accept(visitor);
+                std::cout << static_cast<int32_t>(std::get<uint32_t>(fieldData));
             }
 
             void VisitRepeated(const EchoFieldRepeated& field) override
@@ -597,7 +641,7 @@ namespace application
             }
 
         private:
-            infra::Variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData;
+            std::variant<uint32_t, uint64_t, infra::ProtoLengthDelimited>& fieldData;
             infra::ProtoParser& parser;
             Console& console;
         };
@@ -649,6 +693,85 @@ namespace application
         }
 
         services::GlobalTracer().Trace();
+    }
+
+    void Console::Help()
+    {
+        services::GlobalTracer().Trace() <<
+            R"(Using arguments:
+        1. Every method argument is defined as a single message in proto file. In echo console, this outmost message shall be provided unpacked.
+            Consider the below message and method:
+                message Argument
+                {
+                    int32 value1 = 1;
+                    int32 value2 = 2;
+                }
+
+                rpc Method(Argument)
+
+            The method call in echo console for value1=123 and value2=456 would be:
+                Method 123 456
+
+        2. After the top level message, every nested message needs to provided in square brackets.
+            Consider the below message and method:
+                message NestedArgument
+                {
+                    int32 value = 1;
+                }
+
+                message TopArgument
+                {
+                    int32 value = 1;
+                    NestedArgument nested = 2;
+                }
+
+                rpc Method(Argument)
+
+            The method call in echo console for value=123 and nested.value=456 would be:
+                Method 123 [456]
+        3. Repeated arguments are provided as a list in square brackets.
+            Consider the below message and method:
+                message Argument
+                {
+                    bytes value = 1;
+                }
+
+                rpc Method(Argument)
+
+            The method call in echo console for value=[1,2,3] would be:
+                Method [1,2,3]
+        4. String arguments are provided in double quotes with special characters escaped.
+            Consider the below message and method:
+                message Argument
+                {
+                    string value = 1;
+                }
+
+                rpc Method(Argument)
+
+            The method call in echo console for value="{ "bool":true }" would be:
+                Method "{ \"bool\":true }"
+
+        Best practice: To avoid ambiguity when multiple services have methods with the same name, prefix the method with the service name.
+            For example, if both GapCentral and GapPeripheral in Gap.proto have a RemoveAllBonds method, call the GapCentral version as:
+                GapCentral.RemoveAllBonds
+
+        5. Primitive types mapping table:
+            +-----------------+-----------------+-------------------------------------+
+            | Proto Type      | Token Type      | Example Input                       |
+            +-----------------+-----------------+-------------------------------------+
+            | int32, int64    | Integer         | 42, -123, 0xFF                      |
+            | uint32, uint64  | Integer         | 42, 255, 0xFF                       |
+            | fixed32/64      | Integer         | 42, 0xDEADBEEF                      |
+            | sfixed32/64     | Integer         | -42, 123                            |
+            | bool            | Boolean         | true, false                         |
+            | string          | String          | "hello", identifier                 |
+            | bytes           | Array[Integer]  | [1, 2, 3, 255]                      |
+            | enum            | Integer         | 0, 1, 2                             |
+            | repeated        | Array           | [elem1, elem2, elem3]               |
+            | message         | Braced Values   | { field1_val field2_val }           |
+            +-----------------+-----------------+-------------------------------------+
+        )";
     }
 
     void Console::ListFields(const EchoMessage& message)
@@ -737,12 +860,6 @@ namespace application
                 services::GlobalTracer().Continue() << "sfixed32";
             }
 
-            void VisitOptional(const EchoFieldOptional& field) override
-            {
-                ListFieldVisitor visitor(console);
-                field.type->Accept(visitor);
-            }
-
             void VisitRepeated(const EchoFieldRepeated& field) override
             {
                 ListFieldVisitor visitor(console);
@@ -786,6 +903,7 @@ namespace application
                 methodInvocation.EncodeParameters(method.parameter, line.size(), formatter);
             }
 
+            policy->GrantingSend(serviceProxyStub);
             GetObserver().Send(infra::ByteRangeAsStdString(infra::MakeRange(stream.Storage())));
         }
         catch (ConsoleExceptions::SyntaxError& error)
@@ -804,6 +922,19 @@ namespace application
         {
             services::GlobalTracer().Trace() << "Incorrect type at index " << error.index << " expected type " << error.correctType << " (contents after that position is " << line.substr(error.index) << ")\n";
         }
+        catch (ConsoleExceptions::AmbiguousMethod& error)
+        {
+            services::GlobalTracer().Trace() << "Ambiguous method call: '" << error.methodName << "' exists in multiple services: ";
+
+            for (const auto& serviceName : error.serviceNames)
+            {
+                if (&serviceName != &error.serviceNames.front())
+                    services::GlobalTracer().Continue() << ", ";
+                services::GlobalTracer().Continue() << serviceName;
+            }
+
+            services::GlobalTracer().Continue() << "\nPlease specify the service name, e.g., " << error.serviceNames.front() << "." << error.methodName << "\n";
+        }
         catch (ConsoleExceptions::MethodNotFound& error)
         {
             services::GlobalTracer().Trace() << "Method ";
@@ -821,15 +952,29 @@ namespace application
 
     std::pair<std::shared_ptr<const EchoService>, const EchoMethod&> Console::SearchMethod(MethodInvocation& methodInvocation) const
     {
+        std::vector<std::pair<std::shared_ptr<const EchoService>, const EchoMethod*>> matchingMethods;
+
         for (auto service : root.services)
         {
             if (methodInvocation.method.size() == 1 || methodInvocation.method.front() == service->name)
                 for (auto& method : service->methods)
                     if (method.name == methodInvocation.method.back())
-                        return std::pair<std::shared_ptr<const EchoService>, const EchoMethod&>(service, method);
+                        matchingMethods.emplace_back(std::make_pair(service, &method));
         }
 
-        throw ConsoleExceptions::MethodNotFound{ methodInvocation.method };
+        if (matchingMethods.empty())
+            throw ConsoleExceptions::MethodNotFound{ methodInvocation.method };
+
+        if (methodInvocation.method.size() == 1 && matchingMethods.size() > 1)
+        {
+            std::vector<std::string> serviceNames;
+            for (const auto& [echoService, echoMethod] : matchingMethods)
+                serviceNames.push_back(echoService->name);
+
+            throw ConsoleExceptions::AmbiguousMethod{ methodInvocation.method.back(), serviceNames };
+        }
+
+        return std::pair<std::shared_ptr<const EchoService>, const EchoMethod&>(matchingMethods[0].first, *matchingMethods[0].second);
     }
 
     Console::MethodInvocation::MethodInvocation(const std::string& line)
@@ -852,9 +997,9 @@ namespace application
     {
         while (true)
         {
-            if (!currentToken.Is<ConsoleToken::String>())
+            if (!std::holds_alternative<ConsoleToken::String>(currentToken))
                 break;
-            auto stringToken = currentToken.Get<ConsoleToken::String>();
+            const auto& stringToken = std::get<ConsoleToken::String>(currentToken);
             method.push_back(stringToken.value);
 
             if (method.size() > 2)
@@ -862,7 +1007,7 @@ namespace application
 
             currentToken = tokenizer.Token();
 
-            if (!currentToken.Is<ConsoleToken::Dot>())
+            if (!std::holds_alternative<ConsoleToken::Dot>(currentToken))
                 break;
 
             currentToken = tokenizer.Token();
@@ -874,7 +1019,7 @@ namespace application
 
     void Console::MethodInvocation::ProcessParameterTokens()
     {
-        while (!currentToken.Is<ConsoleToken::End>())
+        while (!std::holds_alternative<ConsoleToken::End>(currentToken))
         {
             messageTokens.tokens.push_back(CreateMessageTokenValue());
             currentToken = tokenizer.Token();
@@ -883,95 +1028,54 @@ namespace application
 
     std::pair<Console::MessageTokens::MessageTokenValue, std::size_t> Console::MethodInvocation::CreateMessageTokenValue()
     {
-        struct TokenVisitor
-            : public infra::StaticVisitor<Console::MessageTokens::MessageTokenValue>
-        {
-            explicit TokenVisitor(MethodInvocation& invocation)
-                : invocation(invocation)
-            {}
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::End) const
+        auto visitor = infra::Overloaded{
+            [this](ConsoleToken::LeftBrace)
+            {
+                currentToken = tokenizer.Token();
+                return ProcessMessage();
+            },
+            [this](ConsoleToken::LeftBracket)
+            {
+                currentToken = tokenizer.Token();
+                return MessageTokens::MessageTokenValue(ProcessArray());
+            },
+            [](const ConsoleToken::String& value)
+            {
+                return MessageTokens::MessageTokenValue(value.value);
+            },
+            [](ConsoleToken::Integer value)
+            {
+                return MessageTokens::MessageTokenValue(value.value);
+            },
+            [](ConsoleToken::Boolean value)
+            {
+                return MessageTokens::MessageTokenValue(value.value);
+            },
+            [](ConsoleToken::End) -> MessageTokens::MessageTokenValue
             {
                 std::abort();
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::Error value) const
+            },
+            [](auto value) -> MessageTokens::MessageTokenValue
             {
                 throw ConsoleExceptions::SyntaxError{ value.index };
             }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::Comma value) const
-            {
-                throw ConsoleExceptions::SyntaxError{ value.index };
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::Dot value) const
-            {
-                throw ConsoleExceptions::SyntaxError{ value.index };
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::Underscore value) const
-            {
-                return Empty{};
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::LeftBrace) const
-            {
-                invocation.currentToken = invocation.tokenizer.Token();
-                return invocation.ProcessMessage();
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::RightBrace value) const
-            {
-                throw ConsoleExceptions::SyntaxError{ value.index };
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::LeftBracket) const
-            {
-                invocation.currentToken = invocation.tokenizer.Token();
-                return MessageTokens::MessageTokenValue(invocation.ProcessArray());
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::RightBracket value) const
-            {
-                throw ConsoleExceptions::SyntaxError{ value.index };
-            }
-
-            MessageTokens::MessageTokenValue operator()(const ConsoleToken::String& value) const
-            {
-                return MessageTokens::MessageTokenValue(value.value);
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::Integer value) const
-            {
-                return MessageTokens::MessageTokenValue(value.value);
-            }
-
-            MessageTokens::MessageTokenValue operator()(ConsoleToken::Boolean value) const
-            {
-                return MessageTokens::MessageTokenValue(value.value);
-            }
-
-        private:
-            MethodInvocation& invocation;
         };
 
-        TokenVisitor visitor(*this);
         std::size_t index = IndexOf(currentToken);
-        return std::make_pair(infra::ApplyVisitor(visitor, currentToken), index);
+        return std::make_pair(std::visit(visitor, currentToken), index);
     }
 
     Console::MessageTokens::MessageTokenValue Console::MethodInvocation::ProcessMessage()
     {
         MessageTokens result;
 
-        while (!currentToken.Is<ConsoleToken::End>() && !currentToken.Is<ConsoleToken::RightBrace>())
+        while (!std::holds_alternative<ConsoleToken::End>(currentToken) && !std::holds_alternative<ConsoleToken::RightBrace>(currentToken))
         {
             result.tokens.push_back(CreateMessageTokenValue());
             currentToken = tokenizer.Token();
         }
 
-        if (!currentToken.Is<ConsoleToken::RightBrace>())
+        if (!std::holds_alternative<ConsoleToken::RightBrace>(currentToken))
             throw ConsoleExceptions::SyntaxError{ IndexOf(currentToken) };
 
         return result;
@@ -983,19 +1087,19 @@ namespace application
 
         while (true)
         {
-            while (!currentToken.Is<ConsoleToken::End>() && !currentToken.Is<ConsoleToken::RightBracket>() && !currentToken.Is<ConsoleToken::Comma>())
+            while (!std::holds_alternative<ConsoleToken::End>(currentToken) && !std::holds_alternative<ConsoleToken::RightBracket>(currentToken) && !std::holds_alternative<ConsoleToken::Comma>(currentToken))
             {
                 result.tokens.push_back(CreateMessageTokenValue());
                 currentToken = tokenizer.Token();
             }
 
-            if (!currentToken.Is<ConsoleToken::Comma>())
+            if (!std::holds_alternative<ConsoleToken::Comma>(currentToken))
                 break;
 
             currentToken = tokenizer.Token();
         }
 
-        if (!currentToken.Is<ConsoleToken::RightBracket>())
+        if (!std::holds_alternative<ConsoleToken::RightBracket>(currentToken))
             throw ConsoleExceptions::SyntaxError{ IndexOf(currentToken) };
 
         return result;
@@ -1028,100 +1132,100 @@ namespace application
 
             void VisitInt64(const EchoFieldInt64& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutVarIntField(value.Get<int64_t>(), field.number);
+                formatter.PutVarIntField(std::get<int64_t>(value), field.number);
             }
 
             void VisitUint64(const EchoFieldUint64& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutVarIntField(value.Get<int64_t>(), field.number);
+                formatter.PutVarIntField(std::get<int64_t>(value), field.number);
             }
 
             void VisitInt32(const EchoFieldInt32& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutVarIntField(value.Get<int64_t>(), field.number);
+                formatter.PutVarIntField(std::get<int64_t>(value), field.number);
             }
 
             void VisitFixed32(const EchoFieldFixed32& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutFixed32Field(static_cast<uint32_t>(value.Get<int64_t>()), field.number);
+                formatter.PutFixed32Field(static_cast<uint32_t>(std::get<int64_t>(value)), field.number);
             }
 
             void VisitFixed64(const EchoFieldFixed64& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutFixed64Field(static_cast<uint64_t>(value.Get<int64_t>()), field.number);
+                formatter.PutFixed64Field(static_cast<uint64_t>(std::get<int64_t>(value)), field.number);
             }
 
             void VisitBool(const EchoFieldBool& field) override
             {
-                if (!value.Is<bool>())
+                if (!std::holds_alternative<bool>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "bool" };
 
-                formatter.PutVarIntField(value.Get<bool>(), field.number);
+                formatter.PutVarIntField(std::get<bool>(value), field.number);
             }
 
             void VisitString(const EchoFieldString& field) override
             {
-                if (!value.Is<std::string>())
+                if (!std::holds_alternative<std::string>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "string" };
 
-                formatter.PutStringField(infra::BoundedConstString(value.Get<std::string>().data(), value.Get<std::string>().size()), field.number);
+                formatter.PutStringField(infra::BoundedConstString(std::get<std::string>(value).data(), std::get<std::string>(value).size()), field.number);
             }
 
             void VisitUnboundedString(const EchoFieldUnboundedString& field) override
             {
-                if (!value.Is<std::string>())
+                if (!std::holds_alternative<std::string>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "string" };
 
-                formatter.PutStringField(infra::BoundedConstString(value.Get<std::string>().data(), value.Get<std::string>().size()), field.number);
+                formatter.PutStringField(infra::BoundedConstString(std::get<std::string>(value).data(), std::get<std::string>(value).size()), field.number);
             }
 
             void VisitEnum(const EchoFieldEnum& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutVarIntField(value.Get<int64_t>(), field.number);
+                formatter.PutVarIntField(std::get<int64_t>(value), field.number);
             }
 
             void VisitSFixed32(const EchoFieldSFixed32& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutFixed32Field(static_cast<uint32_t>(value.Get<int64_t>()), field.number);
+                formatter.PutFixed32Field(static_cast<uint32_t>(std::get<int64_t>(value)), field.number);
             }
 
             void VisitSFixed64(const EchoFieldSFixed64& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutFixed64Field(static_cast<uint64_t>(value.Get<int64_t>()), field.number);
+                formatter.PutFixed64Field(static_cast<uint64_t>(std::get<int64_t>(value)), field.number);
             }
 
             void VisitMessage(const EchoFieldMessage& field) override
             {
-                if (!value.Is<MessageTokens>())
+                if (!std::holds_alternative<MessageTokens>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, field.protoType };
 
                 infra::StdVectorOutputStream::WithStorage stream;
                 infra::ProtoFormatter messageFormatter(stream);
-                methodInvocation.EncodeMessage(*field.message, value.Get<MessageTokens>(), valueIndex, messageFormatter);
+                methodInvocation.EncodeMessage(*field.message, std::get<MessageTokens>(value), valueIndex, messageFormatter);
                 formatter.PutLengthDelimitedField(infra::MakeRange(stream.Storage()), field.number);
             }
 
@@ -1137,19 +1241,10 @@ namespace application
 
             void VisitUint32(const EchoFieldUint32& field) override
             {
-                if (!value.Is<int64_t>())
+                if (!std::holds_alternative<int64_t>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "integer" };
 
-                formatter.PutVarIntField(value.Get<int64_t>(), field.number);
-            }
-
-            void VisitOptional(const EchoFieldOptional& field) override
-            {
-                if (!value.Is<Empty>())
-                {
-                    EncodeFieldVisitor visitor(value, valueIndex, formatter, methodInvocation);
-                    field.type->Accept(visitor);
-                }
+                formatter.PutVarIntField(std::get<int64_t>(value), field.number);
             }
 
             void VisitRepeated(const EchoFieldRepeated& field) override
@@ -1165,15 +1260,15 @@ namespace application
         private:
             void PutVector(int fieldNumber)
             {
-                if (!value.Is<MessageTokens>())
+                if (!std::holds_alternative<MessageTokens>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, "vector of integers" };
                 std::vector<uint8_t> bytes;
-                for (auto& messageToken : value.Get<MessageTokens>().tokens)
+                for (auto& messageToken : std::get<MessageTokens>(value).tokens)
                 {
-                    if (!messageToken.first.Is<int64_t>())
+                    if (!std::holds_alternative<int64_t>(messageToken.first))
                         throw ConsoleExceptions::IncorrectType{ messageToken.second, "integer" };
 
-                    bytes.push_back(static_cast<uint8_t>(messageToken.first.Get<int64_t>()));
+                    bytes.push_back(static_cast<uint8_t>(std::get<int64_t>(messageToken.first)));
                 }
 
                 formatter.PutBytesField(infra::MakeRange(bytes), fieldNumber);
@@ -1181,10 +1276,10 @@ namespace application
 
             void PutRepeated(const std::string& fieldProtoType, std::shared_ptr<EchoField> fieldType)
             {
-                if (!value.Is<std::vector<MessageTokens>>())
+                if (!std::holds_alternative<std::vector<MessageTokens>>(value))
                     throw ConsoleExceptions::IncorrectType{ valueIndex, fieldProtoType };
 
-                for (auto& messageTokens : value.Get<std::vector<MessageTokens>>())
+                for (auto& messageTokens : std::get<std::vector<MessageTokens>>(value))
                 {
                     EncodeFieldVisitor visitor(messageTokens, valueIndex, formatter, methodInvocation);
                     fieldType->Accept(visitor);

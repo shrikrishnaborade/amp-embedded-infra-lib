@@ -13,15 +13,9 @@ namespace services
         , sendStorage(sendStorage)
     {}
 
-    void SesameCobs::Stop()
-    {
-        receivedDataReader.OnAllocatable([]() {});
-        sendStream.OnAllocatable([]() {});
-    }
-
     void SesameCobs::RequestSendMessage(std::size_t size)
     {
-        assert(sendReqestedSize == infra::none);
+        assert(sendReqestedSize == std::nullopt);
         sendReqestedSize = size;
 
         CheckReadyToSendUserData();
@@ -58,12 +52,23 @@ namespace services
         receiveSizeEncoded = 0;
         currentMessageSize = 0;
         receivedDataReader.OnAllocatable([]() {});
-        sendReqestedSize = infra::none;
+        sendReqestedSize.reset();
 
         if (sendingUserData)
             resetting = true;
         else
             FinishReset();
+    }
+
+    void SesameCobs::Stop(const infra::Function<void()>& onDone)
+    {
+        receivedDataReader.OnAllocatable([]() {});
+        sendStream.OnAllocatable([]() {});
+
+        if (!sendingUserData && !resetting)
+            infra::EventDispatcher::Instance().Schedule(onDone);
+        else
+            this->onStopDone = onDone;
     }
 
     void SesameCobs::DataReceived()
@@ -164,14 +169,26 @@ namespace services
                     if (!receiving)
                         DataReceived();
                 });
-            GetObserver().ReceivedMessage(receivedDataReader.Emplace(infra::inPlace, receivedMessage, messageSize), std::exchange(receiveSizeEncoded, 0));
+            GetObserver().ReceivedMessage(receivedDataReader.Emplace(std::in_place, receivedMessage, messageSize), std::exchange(receiveSizeEncoded, 0));
         }
     }
 
     void SesameCobs::CheckReadyToSendUserData()
     {
-        if (!sendingUserData && sendReqestedSize != infra::none)
-            SesameEncoded::GetObserver().SendMessageStreamAvailable(sendStream.Emplace(infra::inPlace, sendStorage, *std::exchange(sendReqestedSize, infra::none)));
+        if (!sendingUserData && sendReqestedSize != std::nullopt)
+            SesameEncoded::GetObserver().SendMessageStreamAvailable(sendStream.Emplace(std::in_place, sendStorage, *std::exchange(sendReqestedSize, std::nullopt)));
+    }
+
+    void SesameCobs::SendSerialData(const infra::ConstByteRange data, const infra::Function<void()>& onSendDataDone)
+    {
+        this->onSendDataDone = onSendDataDone;
+        hal::BufferedSerialCommunicationObserver::Subject().SendData(data, [this]()
+            {
+                if (this->onStopDone)
+                    this->onStopDone();
+                else
+                    this->onSendDataDone();
+            });
     }
 
     void SesameCobs::SendStreamFilled()
@@ -199,8 +216,7 @@ namespace services
     {
         frameSize = FindDelimiter() + 1;
         sendSizeEncoded += 1;
-
-        hal::BufferedSerialCommunicationObserver::Subject().SendData(infra::MakeByteRange(frameSize), [this]()
+        SendSerialData(infra::MakeByteRange(frameSize), [this]()
             {
                 --frameSize;
                 if (resetting)
@@ -232,7 +248,7 @@ namespace services
     {
         sendingFirstPacket = false;
         sendSizeEncoded += 1;
-        hal::BufferedSerialCommunicationObserver::Subject().SendData(infra::MakeByteRange(messageDelimiter), [this]()
+        SendSerialData(infra::MakeByteRange(messageDelimiter), [this]()
             {
                 SendOrDone();
             });
@@ -241,7 +257,7 @@ namespace services
     void SesameCobs::SendLastDelimiter()
     {
         sendSizeEncoded += 1;
-        hal::BufferedSerialCommunicationObserver::Subject().SendData(infra::MakeByteRange(messageDelimiter), [this]()
+        SendSerialData(infra::MakeByteRange(messageDelimiter), [this]()
             {
                 if (resetting)
                     FinishReset();
@@ -261,7 +277,7 @@ namespace services
     void SesameCobs::SendData(infra::ConstByteRange data)
     {
         sendSizeEncoded += data.size();
-        hal::BufferedSerialCommunicationObserver::Subject().SendData(data, [this]()
+        SendSerialData(data, [this]()
             {
                 SendFrameDone();
             });

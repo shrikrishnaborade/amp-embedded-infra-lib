@@ -4,6 +4,8 @@
 #include "infra/util/AutoResetFunction.hpp"
 #include "infra/util/ConstructBin.hpp"
 #include "infra/util/Endian.hpp"
+#include "infra/util/test_helper/MockCallback.hpp"
+#include "services/util/SesameCobs.hpp"
 #include "services/util/SesameWindowed.hpp"
 #include "services/util/test_doubles/SesameMock.hpp"
 #include "gmock/gmock.h"
@@ -41,7 +43,7 @@ public:
 
     void ReceivePacket(const std::vector<uint8_t>& data)
     {
-        base.GetObserver().ReceivedMessage(reader.Emplace(infra::inPlace, data), data.size() + data.size() / 254 + 2);
+        base.GetObserver().ReceivedMessage(reader.Emplace(std::in_place, data), data.size() + data.size() / 254 + 2);
     }
 
     void ReceiveInitRequest(uint16_t availableWindow)
@@ -153,6 +155,7 @@ TEST_F(SesameWindowedTest, MaxSendMessageSize)
     // 4 bytes in a message expands to 1 (cobs) + 1 (operation) + 3 (message) + 1 (delimiter) = 6
     // Two of these messages plus one release window amount to 6 + 6 + 5 = 17, which is under the limit of the 18 bytes buffer of cobs
     EXPECT_EQ(3, communication.MaxSendMessageSize());
+    EXPECT_EQ(17, (services::SesameWindowed::bufferSizeForMessage<3, services::SesameCobs::EncodedMessageSize>));
 }
 
 TEST_F(SesameWindowedTest, send_message_after_initialized)
@@ -504,6 +507,8 @@ TEST_F(SesameWindowedTest, no_new_message_after_stop)
     // ExpectRequestSendMessageForReleaseWindow(12);
     communication.Stop();
     savedReader = nullptr;
+
+    ExecuteAllActions();
 }
 
 TEST_F(SesameWindowedTest, Reset_forwards_to_cobs_and_requests_initialize)

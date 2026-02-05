@@ -67,7 +67,7 @@ namespace services
 
     void EventDispatcherWithNetwork::Connect(ClientConnectionObserverFactory& factory)
     {
-        assert(factory.Address().Is<IPv4Address>());
+        assert(std::holds_alternative<IPv4Address>(factory.Address()));
         connectors.emplace_back(*this, factory);
     }
 
@@ -296,7 +296,8 @@ namespace services
 
         connections.remove_if([](const infra::WeakPtr<ConnectionWin>& connection)
             {
-                return connection.lock() == nullptr;
+                auto connectionPtr = connection.lock();
+                return connectionPtr == nullptr || !connectionPtr->Connected();
             });
         datagrams.remove_if([](const infra::WeakPtr<DatagramWin>& datagram)
             {

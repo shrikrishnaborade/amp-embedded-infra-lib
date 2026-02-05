@@ -7,6 +7,7 @@
 #include "infra/util/PolymorphicVariant.hpp"
 #include "infra/util/SharedOptional.hpp"
 #include "services/util/Sesame.hpp"
+#include "services/util/Stoppable.hpp"
 
 namespace services
 {
@@ -17,12 +18,11 @@ namespace services
     public:
         explicit SesameWindowed(SesameEncoded& delegate);
 
-        void Stop();
-
         // Implementation of Sesame
         void RequestSendMessage(std::size_t size) override;
         std::size_t MaxSendMessageSize() const override;
         void Reset() override;
+        void Stop();
 
     protected:
         // clang-format off
@@ -34,7 +34,7 @@ namespace services
         virtual void SendingInitResponse(uint16_t newWindow) {}
         virtual void SendingReleaseWindow(uint16_t deltaWindow) {}
         virtual void SendingMessage(infra::StreamWriter& writer) {}
-        virtual void SettingOperational(infra::Optional<std::size_t> requestedSize, uint16_t releasedWindow, uint16_t otherWindow) {}
+        virtual void SettingOperational(std::optional<std::size_t> requestedSize, uint16_t releasedWindow, uint16_t otherWindow) {}
 
         // clang-format on
 
@@ -83,6 +83,11 @@ namespace services
             infra::Aligned<uint8_t, infra::LittleEndian<uint16_t>> window;
         };
 
+    public:
+        template<std::size_t MaxMessageSize, template<std::size_t> class MessageSize>
+        static constexpr std::size_t bufferSizeForMessage = MessageSize<sizeof(Operation) + MaxMessageSize>::size * 2 + MessageSize<sizeof(PacketReleaseWindow)>::size;
+
+    private:
         class State
         {
         public:
@@ -163,7 +168,7 @@ namespace services
         uint16_t releasedWindow{ 0 };
         bool sendInitResponse{ false };
         bool sending = false;
-        infra::Optional<std::size_t> requestedSendMessageSize;
+        std::optional<std::size_t> requestedSendMessageSize;
         infra::PolymorphicVariant<State, StateSendingInit, StateSendingInitResponse, StateOperational, StateSendingMessage, StateSendingReleaseWindow> state;
     };
 }

@@ -1,5 +1,6 @@
 #include "lwip/lwip_cpp/LightweightIp.hpp"
 #include "lwip/init.h"
+#include "services/network/Address.hpp"
 #ifndef ESP_PLATFORM
 #include "lwip/timeouts.h"
 #endif
@@ -22,14 +23,41 @@ namespace services
 {
     namespace
     {
-        IPv4Address Convert(ip_addr_t address)
+        IPv4Address Convert(const ip4_addr_t& address)
         {
             return {
-                ip4_addr1(&address.u_addr.ip4),
-                ip4_addr2(&address.u_addr.ip4),
-                ip4_addr3(&address.u_addr.ip4),
-                ip4_addr4(&address.u_addr.ip4),
+                ip4_addr1(&address),
+                ip4_addr2(&address),
+                ip4_addr3(&address),
+                ip4_addr4(&address),
             };
+        }
+
+        IPv6Address Convert(const ip6_addr_t& address)
+        {
+            return {
+                IP6_ADDR_BLOCK1(&address),
+                IP6_ADDR_BLOCK2(&address),
+                IP6_ADDR_BLOCK3(&address),
+                IP6_ADDR_BLOCK4(&address),
+                IP6_ADDR_BLOCK5(&address),
+                IP6_ADDR_BLOCK6(&address),
+                IP6_ADDR_BLOCK7(&address),
+                IP6_ADDR_BLOCK8(&address)
+            };
+        }
+
+        IPAddress Convert(const ip_addr_t& address)
+        {
+            switch (address.type)
+            {
+                case IPADDR_TYPE_V4:
+                    return Convert(address.u_addr.ip4);
+                case IPADDR_TYPE_V6:
+                    return Convert(address.u_addr.ip6);
+                default:
+                    return {};
+            }
         }
     }
 
@@ -67,15 +95,20 @@ namespace services
 
     IPv4Address LightweightIp::GetIPv4Address() const
     {
-        return netifInternal ? Convert(netifInternal->ip_addr) : IPv4Address();
+        return Convert(netif_default->ip_addr.u_addr.ip4);
     }
 
     IPv4InterfaceAddresses LightweightIp::GetIPv4InterfaceAddresses() const
     {
-        if (netifInternal)
-            return { Convert(netifInternal->ip_addr), Convert(netifInternal->netmask), Convert(netifInternal->gw) };
-        else
-            return { IPv4Address(), IPv4Address(), IPv4Address() };
+        return { Convert(netif_default->ip_addr.u_addr.ip4), Convert(netif_default->netmask.u_addr.ip4), Convert(netif_default->gw.u_addr.ip4) };
+    }
+
+    IPv6Address LightweightIp::LinkLocalAddress() const
+    {
+        for (const auto& address : netif_default->ip6_addr)
+            if (ip6_addr_islinklocal(&address.u_addr.ip6))
+                return Convert(address.u_addr.ip6);
+        return {};
     }
 
     void LightweightIp::RegisterInstance()
@@ -103,12 +136,10 @@ namespace services
 
     void LightweightIp::ExtCallback(netif_nsc_reason_t reason, const netif_ext_callback_args_t* args)
     {
-        if (!netifInternal)
-        {
+        if (netif_default == nullptr)
             return;
-        }
 
-        bool linkUp = (netifInternal->flags & NETIF_FLAG_LINK_UP) != 0;
+        bool linkUp = (netif_default->flags & NETIF_FLAG_LINK_UP) != 0;
 
         auto newIpv4Address = GetIPv4Address();
 
@@ -121,7 +152,7 @@ namespace services
 
             if (ipv4Address == IPv4Address())
             {
-                if (connected != infra::none && !stopping)
+                if (connected != std::nullopt && !stopping)
                 {
                     stopping = true;
                     (*connected)->Stop([this]()
@@ -134,7 +165,7 @@ namespace services
             {
                 if (!stopping)
                 {
-                    connected.Emplace(connectedCreator, *this);
+                    connected.emplace(connectedCreator, *this);
                     starting = false;
                 }
                 else
@@ -145,12 +176,12 @@ namespace services
 
     void LightweightIp::OnStopped()
     {
-        connected = infra::none;
+        connected.reset();
         stopping = false;
 
         if (starting)
         {
-            connected.Emplace(connectedCreator, *this);
+            connected.emplace(connectedCreator, *this);
             starting = false;
         }
     }

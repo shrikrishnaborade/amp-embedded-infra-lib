@@ -12,7 +12,14 @@ namespace services
     WebSocketClientConnectionObserver::WebSocketClientConnectionObserver()
         : streamWriter([this]()
               {
-                  StreamWriterAllocatable();
+                  infra::WeakPtr<void> checkAlive = keepAliveWhileWriting;
+                  keepAliveWhileWriting = nullptr;
+                  if (checkAlive.lock())
+                      StreamWriterAllocatable();
+              })
+        , streamReader([this]()
+              {
+                  keepAliveWhileReading = nullptr;
               })
     {}
 
@@ -26,9 +33,10 @@ namespace services
         else
         {
             assert(observerStreamRequested);
-            assert(requestedSendSize != infra::none);
+            assert(requestedSendSize != std::nullopt);
             assert(!streamWriter);
-            Connection::Observer().SendStreamAvailable(streamWriter.Emplace(std::move(writer), *infra::PostAssign(requestedSendSize, infra::none)));
+            keepAliveWhileWriting = Subject().ObserverPtr();
+            Connection::Observer().SendStreamAvailable(streamWriter.Emplace(std::move(writer), *infra::PostAssign(requestedSendSize, std::nullopt)));
         }
     }
 
@@ -60,6 +68,7 @@ namespace services
 
     infra::SharedPtr<infra::StreamReaderWithRewinding> WebSocketClientConnectionObserver::ReceiveStream()
     {
+        keepAliveWhileReading = Subject().ObserverPtr();
         return streamReader.Emplace(*this);
     }
 
@@ -103,7 +112,7 @@ namespace services
                 pongStreamRequested = true;
                 ConnectionObserver::Subject().RequestSendStream(8 + pongBuffer.max_size());
             }
-            else if (requestedSendSize != infra::none)
+            else if (requestedSendSize != std::nullopt)
             {
                 observerStreamRequested = true;
                 ConnectionObserver::Subject().RequestSendStream(*requestedSendSize + 8);
@@ -534,7 +543,7 @@ namespace services
 
     void WebSocketClientFactorySingleConnection::Connect(WebSocketClientObserverFactory& factory)
     {
-        initiation.Emplace(factory, static_cast<WebSocketClientInitiationResult&>(*this), randomDataGenerator, creators);
+        initiation.emplace(factory, static_cast<WebSocketClientInitiationResult&>(*this), randomDataGenerator, creators);
     }
 
     void WebSocketClientFactorySingleConnection::CancelConnect(WebSocketClientObserverFactory& factory, const infra::Function<void()>& onDone)
@@ -550,7 +559,7 @@ namespace services
         connection.Detach();
         connection.Attach(webSocketConnection);
 
-        initiation = infra::none;
+        initiation.reset();
         factory.ConnectionEstablished([webSocketConnection](infra::SharedPtr<ConnectionObserver> connectionObserver)
             {
                 webSocketConnection->Attach(connectionObserver);
@@ -560,13 +569,13 @@ namespace services
     void WebSocketClientFactorySingleConnection::InitiationError(WebSocketClientObserverFactory::ConnectFailReason reason)
     {
         auto& factory = initiation->Factory();
-        initiation = infra::none;
+        initiation.reset();
         factory.ConnectionFailed(reason);
     }
 
     void WebSocketClientFactorySingleConnection::InitiationCancelled()
     {
-        initiation = infra::none;
+        initiation.reset();
     }
 
     WebSocketClientFactorySingleConnection::WebSocketClientInitiation::WebSocketClientInitiation(WebSocketClientObserverFactory& clientObserverFactory,

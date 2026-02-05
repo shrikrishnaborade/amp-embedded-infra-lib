@@ -1,5 +1,4 @@
 #include "services/util/SesameWindowed.hpp"
-#include "infra/stream/BoundedDequeOutputStream.hpp"
 
 namespace services
 {
@@ -7,14 +6,9 @@ namespace services
         : SesameEncodedObserver(delegate)
         , ownBufferSize(static_cast<uint16_t>(SesameEncodedObserver::Subject().MaxSendMessageSize()))
         , releaseWindowSize(static_cast<uint16_t>(SesameEncodedObserver::Subject().MessageSize(sizeof(PacketReleaseWindow))))
-        , state(infra::InPlaceType<StateSendingInit>(), *this)
+        , state(std::in_place_type_t<StateSendingInit>(), *this)
     {
         state->Request();
-    }
-
-    void SesameWindowed::Stop()
-    {
-        readerAccess.SetAction([]() {});
     }
 
     void SesameWindowed::RequestSendMessage(std::size_t size)
@@ -39,9 +33,14 @@ namespace services
         releasedWindow = 0;
         sendInitResponse = false;
         sending = false;
-        requestedSendMessageSize = infra::none;
+        requestedSendMessageSize.reset();
         state.Emplace<StateSendingInit>(*this);
         state->Request();
+    }
+
+    void SesameWindowed::Stop()
+    {
+        readerAccess.SetAction([]() {});
     }
 
     void SesameWindowed::Initialized()
@@ -126,7 +125,7 @@ namespace services
                 if (receivedMessageReader == nullptr)
                     state.Emplace<StateSendingInitResponse>(*this).Request();
             }
-            else if (requestedSendMessageSize != infra::none && SesameEncodedObserver::Subject().MessageSize(*requestedSendMessageSize + 1) + releaseWindowSize <= otherAvailableWindow)
+            else if (requestedSendMessageSize != std::nullopt && SesameEncodedObserver::Subject().MessageSize(*requestedSendMessageSize + 1) + releaseWindowSize <= otherAvailableWindow)
                 state.Emplace<StateSendingMessage>(*this).Request();
             else if (releasedWindow > releaseWindowSize && releaseWindowSize <= otherAvailableWindow)
                 state.Emplace<StateSendingReleaseWindow>(*this).Request();
@@ -249,7 +248,7 @@ namespace services
         infra::DataOutputStream::WithErrorPolicy stream(*writer);
         stream << Operation::message;
 
-        communication.requestedSendMessageSize = infra::none;
+        communication.requestedSendMessageSize.reset();
         communication.GetObserver().SendMessageStreamAvailable(std::move(writer));
     }
 

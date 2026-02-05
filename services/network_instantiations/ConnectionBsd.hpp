@@ -31,6 +31,7 @@ namespace services
 
         IPv4Address Ipv4Address() const;
         void SetObserver(infra::SharedPtr<services::ConnectionObserver> connectionObserver);
+        bool Connected() const;
 
         void Receive();
         void Send();
@@ -77,7 +78,8 @@ namespace services
 
         infra::SharedOptional<StreamWriterBsd> streamWriter;
         std::size_t requestedSendSize = 0;
-        infra::SharedOptional<StreamReaderBsd> streamReader;
+        infra::NotifyingSharedOptional<StreamReaderBsd> streamReader;
+        infra::SharedPtr<void> keepAliveForReader;
         bool trySend = false;
 
         infra::SharedPtr<void> self;

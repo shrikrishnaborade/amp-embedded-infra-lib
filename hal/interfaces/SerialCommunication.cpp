@@ -19,7 +19,7 @@ namespace hal
 
     BufferedSerialCommunicationOnUnbuffered::~BufferedSerialCommunicationOnUnbuffered()
     {
-        delegate.ReceiveData([](infra::ConstByteRange) {});
+        delegate.ReceiveData(nullptr);
     }
 
     void BufferedSerialCommunicationOnUnbuffered::SendData(infra::ConstByteRange data, infra::Function<void()> actionOnCompletion)
@@ -37,4 +37,11 @@ namespace hal
         buffer.Pop(reader.ConstructSaveMarker());
         reader.Rewind(0);
     }
+
+    void BufferedSerialCommunicationOnUnbuffered::Stop(const infra::Function<void()>& onDone)
+    {
+        delegate.ReceiveData(nullptr);
+        scheduler.Schedule(onDone);
+    }
+
 }

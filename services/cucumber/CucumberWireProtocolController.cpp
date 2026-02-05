@@ -79,7 +79,7 @@ namespace services
 
     void CucumberWireProtocolController::HandleBeginScenarioRequest(CucumberWireProtocolParser& parser)
     {
-        auto tags = parser.scenarioTags ? parser.scenarioTags->GetOptionalArray("tags").ValueOrDefault() : infra::JsonArray();
+        auto tags = parser.scenarioTags ? parser.scenarioTags->GetOptionalArray("tags").value_or(infra::JsonArray{}) : infra::JsonArray();
 
         scenarioRequestHandler.BeginScenario(tags, [this]()
             {
@@ -105,7 +105,7 @@ namespace services
         connectionObserver.Subject().RequestSendStream(connectionObserver.Subject().MaxSendStreamSize());
     }
 
-    bool CucumberWireProtocolController::MatchStringArguments(uint8_t id, infra::JsonArray& arguments)
+    bool CucumberWireProtocolController::MatchStringArguments(uint32_t id, infra::JsonArray& arguments)
     {
         uint8_t validStringCount = 0;
         for (const auto& string : JsonStringArray(arguments))
@@ -125,7 +125,7 @@ namespace services
     {
         invokeInfo.successful = false;
         services::CucumberContext::Instance().TimeoutTimer().Cancel();
-        invokeInfo.failReason = reason;
+        invokeInfo.failReason.assign(reason);
 
         connectionObserver.Subject().RequestSendStream(connectionObserver.Subject().MaxSendStreamSize());
     }

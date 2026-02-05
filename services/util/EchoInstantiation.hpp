@@ -1,6 +1,7 @@
-#ifndef SERVICES_UTIL_ECHO_INSTANTIATIONS
-#define SERVICES_UTIL_ECHO_INSTANTIATIONS
+#ifndef SERVICES_UTIL_ECHO_INSTANTIATION_HPP
+#define SERVICES_UTIL_ECHO_INSTANTIATION_HPP
 
+#include "infra/util/Function.hpp"
 #ifdef EMIL_HAL_GENERIC
 #include "hal/generic/UartGeneric.hpp"
 #endif
@@ -23,65 +24,68 @@ namespace main_
             , echo(windowed, serializerFactory)
         {}
 
-        operator services::Echo&()
-        {
-            return echo;
-        }
-
         services::MessageCommunicationCobs::WithMaxMessageSize<MessageSize> cobs;
         services::MessageCommunicationWindowed::WithReceiveBuffer<MessageSize> windowed{ cobs };
         services::EchoOnMessageCommunication echo;
     };
 
-    template<std::size_t MessageSize>
     struct EchoOnSesame
+        : public services::Stoppable
     {
-        EchoOnSesame(hal::BufferedSerialCommunication& serialCommunication, services::MethodSerializerFactory& serializerFactory)
-            : cobs(serialCommunication)
-            , echo(windowed, serializerFactory)
-        {}
+        template<std::size_t MessageSize>
+        struct WithMessageSize;
 
-        ~EchoOnSesame()
-        {
-            cobs.Stop();
-            windowed.Stop();
-        }
+        EchoOnSesame(infra::BoundedVector<uint8_t>& cobsSendStorage, infra::BoundedDeque<uint8_t>& cobsReceivedMessage, hal::BufferedSerialCommunication& serialCommunication, services::MethodSerializerFactory& serializerFactory);
 
-        operator services::Echo&()
-        {
-            return echo;
-        }
+        void Reset();
 
-        void Reset()
-        {
-            echo.Reset();
-        }
+        // Implementation of Stoppable
+        void Stop(const infra::Function<void()>& onDone) override;
 
-        services::SesameCobs::WithMaxMessageSize<MessageSize> cobs;
+        services::SesameCobs cobs;
         services::SesameWindowed windowed{ cobs };
         services::EchoOnSesame echo;
+
+        infra::AutoResetFunction<void()> onStopDone;
+
+        template<std::size_t MessageSize>
+        struct CobsStorage
+        {
+            static constexpr std::size_t encodedMessageSize = services::SesameWindowed::bufferSizeForMessage<MessageSize, services::SesameCobs::EncodedMessageSize>;
+
+            infra::BoundedVector<uint8_t>::WithMaxSize<services::SesameCobs::sendBufferSize<MessageSize>> cobsSendStorage;
+            infra::BoundedDeque<uint8_t>::WithMaxSize<services::SesameCobs::receiveBufferSize<encodedMessageSize>> cobsReceivedMessage;
+        };
+    };
+
+    template<std::size_t MessageSize>
+    struct EchoOnSesame::WithMessageSize
+        : private EchoOnSesame::CobsStorage<MessageSize>
+        , EchoOnSesame
+    {
+        WithMessageSize(hal::BufferedSerialCommunication& serialCommunication, services::MethodSerializerFactory& serializerFactory)
+            : EchoOnSesame(this->cobsSendStorage, this->cobsReceivedMessage, serialCommunication, serializerFactory)
+        {}
     };
 
 #ifdef EMIL_HAL_GENERIC
     template<std::size_t MessageSize>
-    struct EchoOnUartBase
+    struct EchoOnUart
+        : services::Stoppable
     {
-        explicit EchoOnUartBase(infra::BoundedConstString portName)
-            : uart(infra::AsStdString(portName))
+        explicit EchoOnUart(infra::BoundedConstString portName, const hal::UartGeneric::Config& config = {})
+            : uart(infra::AsStdString(portName), config)
         {}
+
+        void Stop(const infra::Function<void()>& onDone) override
+        {
+            echoOnSesame.Stop(onDone);
+        }
 
         hal::UartGeneric uart;
         services::MethodSerializerFactory::OnHeap serializerFactory;
         hal::BufferedSerialCommunicationOnUnbuffered::WithStorage<MessageSize> bufferedSerial{ uart };
-    };
-
-    template<std::size_t MessageSize>
-    struct EchoOnUart
-        : EchoOnUartBase<MessageSize>
-    {
-        using EchoOnUartBase<MessageSize>::EchoOnUartBase;
-
-        main_::EchoOnSesame<MessageSize> echoOnSesame{ this->bufferedSerial, this->serializerFactory };
+        main_::EchoOnSesame::WithMessageSize<MessageSize> echoOnSesame{ this->bufferedSerial, this->serializerFactory };
 
         services::Echo& echo{ echoOnSesame.echo };
     };
@@ -130,10 +134,24 @@ namespace main_
     {
         EchoForwarderToSerialCommunication(services::Echo& from, hal::SerialCommunication& toSerial, services::MethodSerializerFactory& serializerFactory)
             : to(toSerial, serializerFactory)
-            , echoForwarder(from, to)
+            , echoForwarder(from, to.echo)
         {}
 
         EchoOnSerialCommunication<MessageSize> to;
+        EchoForwarder<MessageSize, MaxServices> echoForwarder;
+    };
+
+    template<std::size_t MessageSize, std::size_t MaxServices>
+    struct EchoForwarderToSesame
+    {
+        EchoForwarderToSesame(services::Echo& from, hal::SerialCommunication& toSerial, services::MethodSerializerFactory& serializerFactory)
+            : bufferedSerial(toSerial)
+            , to(bufferedSerial, serializerFactory)
+            , echoForwarder(from, to.echo)
+        {}
+
+        hal::BufferedSerialCommunicationOnUnbuffered::WithStorage<MessageSize> bufferedSerial;
+        EchoOnSesame::WithMessageSize<MessageSize> to;
         EchoForwarder<MessageSize, MaxServices> echoForwarder;
     };
 }

@@ -3,7 +3,8 @@
 
 #include "infra/stream/LimitedInputStream.hpp"
 #include "infra/util/SharedOptional.hpp"
-#include "protobuf/echo/Echo.hpp"
+#include "infra/util/SharedPtr.hpp"
+#include "protobuf/echo/EchoOnStreams.hpp"
 #include "services/network/Connection.hpp"
 
 namespace services
@@ -40,7 +41,9 @@ namespace services
         infra::NotifyingSharedOptional<LimitedReader> reader{
             [this]()
             {
-                if (delayReceived)
+                infra::WeakPtr<void> checkAlive = keepAliveWhileReading;
+                keepAliveWhileReading = nullptr;
+                if (checkAlive.lock() != nullptr && delayReceived)
                 {
                     delayReceived = false;
                     if (ConnectionObserver::IsAttached())
@@ -48,6 +51,7 @@ namespace services
                 }
             }
         };
+        infra::SharedPtr<void> keepAliveWhileReading;
     };
 }
 

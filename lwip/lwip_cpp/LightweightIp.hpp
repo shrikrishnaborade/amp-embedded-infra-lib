@@ -6,6 +6,7 @@
 #include "lwip/lwip_cpp/ConnectionLwIp.hpp"
 #include "lwip/lwip_cpp/DatagramLwIp.hpp"
 #include "lwip/lwip_cpp/MulticastLwIp.hpp"
+#include "services/network/Address.hpp"
 #include "services/network/ConnectionStatus.hpp"
 #include "services/util/Stoppable.hpp"
 
@@ -15,7 +16,7 @@ namespace services
         : public ConnectionFactoryLwIp
         , public DatagramFactoryLwIp
         , public MulticastLwIp
-        , public IPv4Info
+        , public IPInfo
         , public ConnectionStatus
         , public infra::IntrusiveList<LightweightIp>::NodeType
     {
@@ -36,6 +37,7 @@ namespace services
         // Implementation of IPv4Info
         IPv4Address GetIPv4Address() const override;
         IPv4InterfaceAddresses GetIPv4InterfaceAddresses() const override;
+        IPv6Address LinkLocalAddress() const override;
 
     private:
         void RegisterInstance();
@@ -51,7 +53,7 @@ namespace services
         services::IPv4Address ipv4Address;
 
         infra::CreatorBase<services::Stoppable, void(LightweightIp& lightweightIp)>& connectedCreator;
-        infra::Optional<infra::ProxyCreator<services::Stoppable, void(LightweightIp& lightweightIp)>> connected;
+        std::optional<infra::ProxyCreator<services::Stoppable, void(LightweightIp& lightweightIp)>> connected;
         bool stopping = false;
         bool starting = false;
 

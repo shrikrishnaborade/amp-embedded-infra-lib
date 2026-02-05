@@ -16,7 +16,7 @@ target_sources(hal.interfaces PRIVATE
     AsyncGpio.cpp
     AsyncGpio.hpp
     BackupRam.hpp
-    Can.cpp
+    BleDtm.hpp
     Can.hpp
     CommunicationConfigurator.hpp
     DigitalToAnalogPin.hpp
@@ -36,12 +36,14 @@ target_sources(hal.interfaces PRIVATE
     I2cRegisterAccess.hpp
     MacAddress.cpp
     MacAddress.hpp
+    PulseWidthModulation.hpp
     QuadSpi.cpp
     QuadSpi.hpp
     RandomDataGenerator.hpp
     Reset.hpp
     SerialCommunication.cpp
     SerialCommunication.hpp
+    Sleepable.hpp
     Spi.cpp
     Spi.hpp
     UsbCustomHid.hpp

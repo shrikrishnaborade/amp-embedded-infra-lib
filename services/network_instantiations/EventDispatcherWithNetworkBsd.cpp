@@ -7,7 +7,10 @@ namespace
 {
     void SetNonBlocking(int fileDescriptor)
     {
-        if (fcntl(fileDescriptor, F_SETFL, fcntl(fileDescriptor, F_GETFL, 0) | O_NONBLOCK) == -1)
+        auto status_flags = fcntl(fileDescriptor, F_GETFL, 0);
+        if (status_flags == -1)
+            std::abort();
+        if (fcntl(fileDescriptor, F_SETFL, status_flags | O_NONBLOCK) == -1)
             std::abort();
     }
 }
@@ -74,7 +77,7 @@ namespace services
 
     void EventDispatcherWithNetwork::Connect(ClientConnectionObserverFactory& factory)
     {
-        assert(factory.Address().Is<IPv4Address>());
+        assert(std::holds_alternative<IPv4Address>(factory.Address()));
         connectors.emplace_back(*this, factory);
     }
 
@@ -255,7 +258,8 @@ namespace services
 
         connections.remove_if([](const infra::WeakPtr<ConnectionBsd>& connection)
             {
-                return connection.lock() == nullptr;
+                auto connectionPtr = connection.lock();
+                return connectionPtr == nullptr || !connectionPtr->Connected();
             });
         datagrams.remove_if([](const infra::WeakPtr<DatagramBsd>& datagram)
             {
