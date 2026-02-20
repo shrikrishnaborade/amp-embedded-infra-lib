@@ -95,17 +95,17 @@ namespace services
 
     IPv4Address LightweightIp::GetIPv4Address() const
     {
-        return Convert(netif_default->ip_addr.u_addr.ip4);
+        return Convert(netifInternal->ip_addr.u_addr.ip4);
     }
 
     IPv4InterfaceAddresses LightweightIp::GetIPv4InterfaceAddresses() const
     {
-        return { Convert(netif_default->ip_addr.u_addr.ip4), Convert(netif_default->netmask.u_addr.ip4), Convert(netif_default->gw.u_addr.ip4) };
+        return { Convert(netifInternal->ip_addr.u_addr.ip4), Convert(netifInternal->netmask.u_addr.ip4), Convert(netifInternal->gw.u_addr.ip4) };
     }
 
     IPv6Address LightweightIp::LinkLocalAddress() const
     {
-        for (const auto& address : netif_default->ip6_addr)
+        for (const auto& address : netifInternal->ip6_addr)
             if (ip6_addr_islinklocal(&address.u_addr.ip6))
                 return Convert(address.u_addr.ip6);
         return {};
@@ -136,10 +136,10 @@ namespace services
 
     void LightweightIp::ExtCallback(netif_nsc_reason_t reason, const netif_ext_callback_args_t* args)
     {
-        if (netif_default == nullptr)
+        if (netifInternal == nullptr)
             return;
 
-        bool linkUp = (netif_default->flags & NETIF_FLAG_LINK_UP) != 0;
+        bool linkUp = (netifInternal->flags & NETIF_FLAG_LINK_UP) != 0;
 
         auto newIpv4Address = GetIPv4Address();
 
