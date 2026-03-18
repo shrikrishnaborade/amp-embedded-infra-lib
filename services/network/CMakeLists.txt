@@ -114,6 +114,10 @@ if (EMIL_INCLUDE_MBEDTLS OR NOT EMIL_EXTERNAL_MBEDTLS_TARGET STREQUAL "")
         )
     endif()
 
+    if (${TARGET_MCU_FAMILY} STREQUAL "esp32")
+        target_compile_definitions(services.network PUBLIC ESP_PLATFORM)
+    endif()
+
     target_sources(services.network PRIVATE
         CertificatesMbedTls.cpp
         CertificatesMbedTls.hpp

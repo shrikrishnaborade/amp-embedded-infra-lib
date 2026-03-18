@@ -13,14 +13,15 @@ extern "C"
     }
 #endif
 
+#ifndef ESP_PLATFORM
     int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len, size_t* olen)
     {
         really_assert(services::MbedTlsAdapter::InstanceSet());
         services::MbedTlsAdapter::Instance().RandomDataGenerator().GenerateRandomData(infra::ByteRange(output, output + len));
         *olen = len;
-
         return 0;
     }
+#endif
 #endif
 }
 
