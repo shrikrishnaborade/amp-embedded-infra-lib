@@ -10,7 +10,10 @@
 #include "infra/util/InterfaceConnector.hpp"
 #include "infra/util/SharedObjectAllocatorFixedSize.hpp"
 #include "infra/util/SharedOptional.hpp"
-#include "mbedtls/ctr_drbg.h"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/ctr_drbg.h"
 #include "mbedtls/ssl.h"
 #include "mbedtls/ssl_cache.h"
 #include "services/network/CertificatesMbedTls.hpp"

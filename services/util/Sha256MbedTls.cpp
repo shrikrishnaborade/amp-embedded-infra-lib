@@ -1,6 +1,9 @@
 #include "services/util/Sha256MbedTls.hpp"
 #include "infra/util/Compatibility.hpp"
-#include "mbedtls/sha256.h"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/sha256.h"
 #include "mbedtls/version.h"
 #include <cassert>
 

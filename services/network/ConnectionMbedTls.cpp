@@ -50,7 +50,6 @@ namespace services
 
         result = mbedtls_ssl_config_defaults(&sslConfig, server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
         assert(result == 0);
-        mbedtls_ssl_conf_rng(&sslConfig, mbedtls_ctr_drbg_random, &ctr_drbg);
         mbedtls_ssl_conf_authmode(&sslConfig, GetAuthMode(parameters));
 
         certificates.Config(sslConfig);

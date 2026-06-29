@@ -31,7 +31,7 @@ namespace services
         virtual void UpdateValidToDate();
 
     private:
-        int32_t ExtractExponent(const mbedtls_rsa_context& rsaContext) const;
+        int32_t ExtractExponent() const;
 
         void X509AddAlgorithm(infra::Asn1Formatter& root, const mbedtls_x509_buf& oid) const;
         void X509AddName(infra::Asn1Formatter& root, const mbedtls_x509_name& name) const;

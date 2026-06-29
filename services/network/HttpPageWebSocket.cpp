@@ -1,5 +1,9 @@
 #include "services/network/HttpPageWebSocket.hpp"
-#include "mbedtls/sha1.h"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/sha1.h"
+#include "psa/crypto.h"
 #include "services/network/HttpErrors.hpp"
 
 namespace services
@@ -55,7 +59,15 @@ namespace services
     void HttpPageWebSocket::AddHeaders(HttpResponseHeaderBuilder& builder) const
     {
         std::array<uint8_t, 20> sha1Digest;
-        mbedtls_sha1(reinterpret_cast<const uint8_t*>(webSocketKey.begin()), webSocketKey.size(), sha1Digest.data());
+        size_t hashLength = 0;
+        auto status = psa_hash_compute(PSA_ALG_SHA_1,
+            reinterpret_cast<const uint8_t*>(webSocketKey.begin()),
+            webSocketKey.size(),
+            sha1Digest.data(),
+            sha1Digest.size(),
+            &hashLength);
+        really_assert(status == PSA_SUCCESS);
+        really_assert(hashLength == sha1Digest.size());
 
         builder.AddHeader("Upgrade", "websocket");
         builder.AddHeader("Connection", "Upgrade");

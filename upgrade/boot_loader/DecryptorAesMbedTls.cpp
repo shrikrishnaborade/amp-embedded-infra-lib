@@ -6,8 +6,16 @@ namespace application
         : currentStreamBlock()
         , counter()
     {
-        mbedtls_aes_init(&ctx);
-        mbedtls_aes_setkey_enc(&ctx, key.begin(), key.size() * 8);
+        psa_crypto_init();
+
+        psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+        psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_ENCRYPT);
+        psa_set_key_algorithm(&attributes, PSA_ALG_CTR);
+        psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+        psa_set_key_bits(&attributes, 128);
+
+        psa_import_key(&attributes, key.begin(), key.size(), &keyId);
+        psa_reset_key_attributes(&attributes);
     }
 
     infra::ByteRange DecryptorAesMbedTls::StateBuffer()
@@ -22,7 +30,15 @@ namespace application
 
     void DecryptorAesMbedTls::DecryptPart(infra::ByteRange data)
     {
-        mbedtls_aes_crypt_ctr(&ctx, data.size(), &currentStreamBlockOffset, counter.data(), currentStreamBlock.data(), data.begin(), data.begin());
+        size_t outputLen = 0;
+        psa_cipher_encrypt(
+            keyId,
+            PSA_ALG_CTR,
+            counter.data(), counter.size(),
+            data.begin(), data.size(),
+            data.begin(), data.size(),
+            &outputLen
+        );
     }
 
     bool DecryptorAesMbedTls::DecryptAndAuthenticate(infra::ByteRange data)

@@ -1,6 +1,9 @@
 #include "upgrade/pack_builder/ImageAuthenticatorHmac.hpp"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
 #include "mbedtls/md.h"
-#include "mbedtls/sha256.h"
+#include "mbedtls/private/sha256.h"
 
 namespace application
 {

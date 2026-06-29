@@ -1,8 +1,11 @@
 #include "services/util/SesameCryptoMbedTls.hpp"
 #include "infra/util/ReallyAssert.hpp"
-#include "mbedtls/ecdsa.h"
-#include "mbedtls/hmac_drbg.h"
-#include "mbedtls/sha256.h"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/ecdsa.h"
+#include "mbedtls/private/hmac_drbg.h"
+#include "mbedtls/private/sha256.h"
 #include "services/util/MbedTlsRandomDataGeneratorWrapper.hpp"
 
 namespace services
@@ -37,7 +40,13 @@ namespace services
         mbedtls_mpi_init(&privateKey);
         mbedtls_ecp_point_init(&publicKey);
 
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // mbedTLS 4.x: Use mbedtls_ecp_gen_keypair
+        really_assert(mbedtls_ecp_gen_keypair(&group, &privateKey, &publicKey, &MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
+#else
+        // mbedTLS 3.x and earlier: Use mbedtls_ecdh_gen_public
         really_assert(mbedtls_ecdh_gen_public(&group, &privateKey, &publicKey, &MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
+#endif
     }
 
     EcSecP256r1DiffieHellmanMbedTls::~EcSecP256r1DiffieHellmanMbedTls()
@@ -60,7 +69,18 @@ namespace services
         mbedtls_ecp_point_init(&dhOtherPublicKey);
         really_assert(mbedtls_ecp_point_read_binary(&group, &dhOtherPublicKey, otherPublicKey.begin(), otherPublicKey.size()) == 0);
 
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // mbedTLS 4.x: Use ecp_mul directly
+        mbedtls_ecp_point result;
+        mbedtls_ecp_point_init(&result);
+        really_assert(mbedtls_ecp_mul(const_cast<mbedtls_ecp_group*>(&group), &result, &privateKey, &dhOtherPublicKey, &MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
+        // Extract X coordinate as the shared secret
+        really_assert(mbedtls_mpi_copy(&z, &result.MBEDTLS_PRIVATE(X)) == 0);
+        mbedtls_ecp_point_free(&result);
+#else
+        // mbedTLS 3.x and earlier: Use mbedtls_ecdh_compute_shared
         really_assert(mbedtls_ecdh_compute_shared(const_cast<mbedtls_ecp_group*>(&group), &z, &dhOtherPublicKey, &privateKey, &MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
+#endif
 
         auto sharedSecret = ConvertToBytes<32>(z);
 
@@ -76,25 +96,31 @@ namespace services
         mbedtls_ecp_group_init(&group);
         really_assert(mbedtls_ecp_group_load(&group, MBEDTLS_ECP_DP_SECP256R1) == 0);
 
-        mbedtls_ecdh_init(&context);
-        really_assert(mbedtls_ecdh_setup(&context, group.id) == 0);
-
         mbedtls_mpi_init(&privateKey);
-        mbedtls_ecp_point dsaPublicKey;
-        mbedtls_ecp_point_init(&dsaPublicKey);
 
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // mbedTLS 4.x: Use ECP to directly parse the private key
+        mbedtls_ecp_keypair tempKey;
+        mbedtls_ecp_keypair_init(&tempKey);
+        really_assert(mbedtls_ecp_read_key(MBEDTLS_ECP_DP_SECP256R1, &tempKey, dsaCertificatePrivateKey.begin(), dsaCertificatePrivateKey.size()) == 0);
+        really_assert(mbedtls_mpi_copy(&privateKey, &tempKey.MBEDTLS_PRIVATE(d)) == 0);
+        mbedtls_ecp_keypair_free(&tempKey);
+#else
+        // mbedTLS 3.x and earlier: Use pk context
         mbedtls_pk_context dsaPrivateKeyContext;
         mbedtls_pk_init(&dsaPrivateKeyContext);
         really_assert(mbedtls_pk_parse_key(&dsaPrivateKeyContext, dsaCertificatePrivateKey.begin(), dsaCertificatePrivateKey.size(), nullptr, 0, &MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
-        really_assert(mbedtls_ecp_export(mbedtls_pk_ec(dsaPrivateKeyContext), &group, &privateKey, &dsaPublicKey) == 0);
+        really_assert(mbedtls_ecp_export(mbedtls_pk_ec(dsaPrivateKeyContext), &group, &privateKey, nullptr) == 0);
         mbedtls_pk_free(&dsaPrivateKeyContext);
-        mbedtls_ecp_point_free(&dsaPublicKey);
+#endif
     }
 
     EcSecP256r1DsaSignerMbedTls::~EcSecP256r1DsaSignerMbedTls()
     {
         mbedtls_mpi_free(&privateKey);
+#if MBEDTLS_VERSION_MAJOR < 4
         mbedtls_ecdh_free(&context);
+#endif
         mbedtls_ecp_group_free(&group);
     }
 
@@ -119,6 +145,27 @@ namespace services
         mbedtls_mpi_free(&r);
 
         return { encodedR, encodedS };
+    }
+
+    EcSecP256r1DsaVerifierMbedTls::EcSecP256r1DsaVerifierMbedTls(infra::ConstByteRange dsaPublicKey)
+        : valid(true) // No verification of root certificate is performed when directly given a public key
+    {
+        mbedtls_ecp_group_init(&group);
+        really_assert(mbedtls_ecp_group_load(&group, MBEDTLS_ECP_DP_SECP256R1) == 0);
+
+        mbedtls_ecp_point_init(&publicKey);
+
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // mbedTLS 4.x: Parse the public key point directly from binary format
+        really_assert(mbedtls_ecp_point_read_binary(&group, &publicKey, dsaPublicKey.begin(), dsaPublicKey.size()) == 0);
+#else
+        // mbedTLS 3.x and earlier: Use pk context to parse
+        mbedtls_pk_context publicKeyContext;
+        mbedtls_pk_init(&publicKeyContext);
+        really_assert(mbedtls_pk_parse_public_key(&publicKeyContext, dsaPublicKey.begin(), dsaPublicKey.size()) == 0);
+        really_assert(mbedtls_ecp_export(mbedtls_pk_ec(publicKeyContext), &group, nullptr, &publicKey) == 0);
+        mbedtls_pk_free(&publicKeyContext);
+#endif
     }
 
     EcSecP256r1DsaVerifierMbedTls::EcSecP256r1DsaVerifierMbedTls(infra::ConstByteRange dsaCertificate, infra::ConstByteRange rootCaCertificate)
@@ -148,12 +195,19 @@ namespace services
         mbedtls_md(mdInfo, certificate.tbs.p, certificate.tbs.len, hash.data());
         valid = mbedtls_pk_verify(&rootCertificate.pk, MBEDTLS_MD_SHA256, hash.data(), hash.size(), certificate.MBEDTLS_PRIVATE(sig).p, certificate.MBEDTLS_PRIVATE(sig).len) == 0;
 
-        really_assert(mbedtls_ecp_export(mbedtls_pk_ec(certificate.pk), &otherGroup, &otherDsaPrivateKey, &publicKey) == 0);
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // mbedTLS 4.x: Export from certificate and parse as ECP point
+        unsigned char derBuffer[256];
+        int derSize = mbedtls_pk_write_pubkey_der(&certificate.pk, derBuffer, sizeof(derBuffer));
+        really_assert(derSize > 0);
+        really_assert(mbedtls_ecp_point_read_binary(&group, &publicKey, derBuffer + (derSize - 65), 65) == 0);
+#else
+        // mbedTLS 3.x and earlier: Use ecp_export directly
+        really_assert(mbedtls_ecp_export(mbedtls_pk_ec(certificate.pk), &group, nullptr, &publicKey) == 0);
+#endif
 
         mbedtls_x509_crt_free(&certificate);
-
-        mbedtls_mpi_free(&otherDsaPrivateKey);
-        mbedtls_ecp_group_free(&otherGroup);
+        mbedtls_x509_crt_free(&rootCertificate);
     }
 
     EcSecP256r1DsaVerifierMbedTls::~EcSecP256r1DsaVerifierMbedTls()
@@ -244,15 +298,31 @@ namespace services
     EcSecP256r1PrivateKey::EcSecP256r1PrivateKey(hal::SynchronousRandomDataGenerator& randomDataGenerator)
     {
         mbedtls_pk_init(&context);
+
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // EC key generation in mbedTLS 4.x is complex due to PSA Crypto integration
+        // For now, this is not supported - keys must be parsed from DER/PEM format
+        really_assert(false && "EC key generation not yet supported in mbedTLS 4.x");
+#else
+        // mbedTLS 3.x and earlier: Generate EC key using pk context
         really_assert(mbedtls_pk_setup(&context, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) == 0);
         really_assert(mbedtls_ecp_gen_key(MBEDTLS_ECP_DP_SECP256R1, mbedtls_pk_ec(context), &services::MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
+#endif
     }
 
     EcSecP256r1PrivateKey::EcSecP256r1PrivateKey(infra::ConstByteRange key, hal::SynchronousRandomDataGenerator& randomDataGenerator)
     {
         mbedtls_pk_init(&context);
+
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // In mbedTLS 4.x, mbedtls_pk_parse_key does not need setup - it auto-detects the key type
+        // The signature also changed: no RNG callback parameter
+        really_assert(mbedtls_pk_parse_key(&context, key.begin(), key.size(), nullptr, 0) == 0);
+#else
+        // mbedTLS 3.x and earlier: Setup first, then parse
         really_assert(mbedtls_pk_setup(&context, mbedtls_pk_info_from_type(MBEDTLS_PK_ECKEY)) == 0);
         really_assert(mbedtls_pk_parse_key(&context, key.begin(), key.size(), nullptr, 0, &services::MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
+#endif
     }
 
     EcSecP256r1PrivateKey::~EcSecP256r1PrivateKey()
@@ -284,6 +354,13 @@ namespace services
     EcSecP256r1Certificate::EcSecP256r1Certificate(const EcSecP256r1PrivateKey& subjectKey, const char* subjectName, const EcSecP256r1PrivateKey& issuerKey, const char* issuerName, hal::SynchronousRandomDataGenerator& randomDataGenerator)
         : randomDataGenerator(randomDataGenerator)
     {
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // Note: X509 certificate generation is not supported in mbedTLS 4.x (tf-psa-crypto)
+        // x509write functions have been removed from this variant
+        // This class is kept for API compatibility but will fail at runtime if used
+        really_assert(false && "Certificate generation not supported in mbedTLS 4.x");
+#else
+        // mbedTLS 3.x and earlier: Certificate generation supported
         mbedtls_x509write_crt_init(&dsaCertificate);
 
         std::array<uint8_t, 16> serial;
@@ -297,26 +374,44 @@ namespace services
         mbedtls_x509write_crt_set_issuer_name(&dsaCertificate, issuerName);
         mbedtls_x509write_crt_set_issuer_key(&dsaCertificate, &const_cast<mbedtls_pk_context&>(issuerKey.Context()));
         mbedtls_x509write_crt_set_basic_constraints(&dsaCertificate, 0, -1);
+#endif
     }
 
     EcSecP256r1Certificate::~EcSecP256r1Certificate()
     {
+#if MBEDTLS_VERSION_MAJOR < 4
         mbedtls_x509write_crt_free(&dsaCertificate);
+#endif
     }
 
     infra::BoundedString::WithStorage<512> EcSecP256r1Certificate::Pem() const
     {
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // Not supported in mbedTLS 4.x
+        really_assert(false && "Certificate generation not supported in mbedTLS 4.x");
+        return infra::BoundedString::WithStorage<512>(512, '\0');
+#else
+        // mbedTLS 3.x and earlier
         infra::BoundedString::WithStorage<512> result(512, '\0');
         really_assert(mbedtls_x509write_crt_pem(&const_cast<mbedtls_x509write_cert&>(dsaCertificate), reinterpret_cast<unsigned char*>(const_cast<char*>(result.data())), result.size(), &services::MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator) == 0);
         result.resize(result.find('\0') + 1);
         return result;
+#endif
     }
 
     infra::BoundedVector<uint8_t>::WithMaxSize<512> EcSecP256r1Certificate::Der() const
     {
+#if MBEDTLS_VERSION_MAJOR >= 4
+        // Not supported in mbedTLS 4.x
+        really_assert(false && "Certificate generation not supported in mbedTLS 4.x");
+        return infra::BoundedVector<uint8_t>::WithMaxSize<512>(512, static_cast<uint8_t>(0));
+#else
+        // mbedTLS 3.x and earlier
         infra::BoundedVector<uint8_t>::WithMaxSize<512> result(512, static_cast<uint8_t>(0));
         auto size = mbedtls_x509write_crt_der(&const_cast<mbedtls_x509write_cert&>(dsaCertificate), result.data(), result.size(), &services::MbedTlsRandomDataGeneratorWrapper, &randomDataGenerator);
         result.erase(result.begin(), result.begin() + result.size() - size);
         return result;
+#endif
     }
+
 }

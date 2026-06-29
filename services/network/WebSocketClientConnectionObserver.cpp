@@ -3,7 +3,10 @@
 #include "infra/stream/SavedMarkerStream.hpp"
 #include "infra/stream/StringOutputStream.hpp"
 #include "infra/util/Endian.hpp"
-#include "mbedtls/sha1.h"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/sha1.h"
 #include "services/network/HttpServer.hpp"
 #include <cassert>
 

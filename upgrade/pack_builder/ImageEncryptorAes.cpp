@@ -1,5 +1,5 @@
 #include "upgrade/pack_builder/ImageEncryptorAes.hpp"
-#include "mbedtls/aes.h"
+#include <psa/crypto.h>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -26,17 +26,37 @@ namespace application
         std::vector<uint8_t> counter(blockLength, 0);
         randomDataGenerator.GenerateRandomData(counter);
 
-        mbedtls_aes_context ctx;
-        mbedtls_aes_init(&ctx);
-        mbedtls_aes_setkey_enc(&ctx, key.begin(), key.size() * 8);
+        if (psa_crypto_init() != PSA_SUCCESS)
+            throw std::runtime_error("PSA Crypto initialization failed");
+
+        psa_key_attributes_t attributes = PSA_KEY_ATTRIBUTES_INIT;
+        psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_ENCRYPT);
+        psa_set_key_algorithm(&attributes, PSA_ALG_CTR);
+        psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+        psa_set_key_bits(&attributes, 128);
+
+        psa_key_id_t keyId;
+        psa_status_t status = psa_import_key(&attributes, key.begin(), key.size(), &keyId);
+        psa_reset_key_attributes(&attributes);
+        if (status != PSA_SUCCESS)
+            throw std::runtime_error("Key import failed");
 
         std::vector<uint8_t> result = counter;
         result.resize(result.size() + data.size(), 0);
 
-        size_t offset = 0;
-        std::array<uint8_t, blockLength> stream_block = {};
-        int ret = mbedtls_aes_crypt_ctr(&ctx, data.size(), &offset, counter.data(), stream_block.data(), data.data(), result.data() + blockLength);
-        if (ret != 0)
+        size_t outputLen = 0;
+        status = psa_cipher_encrypt(
+            keyId,
+            PSA_ALG_CTR,
+            counter.data(), counter.size(),
+            data.data(), data.size(),
+            result.data() + blockLength, result.size() - blockLength,
+            &outputLen
+        );
+
+        psa_destroy_key(keyId);
+
+        if (status != PSA_SUCCESS)
             throw std::runtime_error("AES encryption failed");
 
         if (!CheckDecryption(data, result))

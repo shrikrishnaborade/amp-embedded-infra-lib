@@ -1,5 +1,8 @@
 #include "upgrade/pack_builder/ImageSignerHashOnly.hpp"
-#include "mbedtls/sha256.h"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/sha256.h"
 
 namespace application
 {

@@ -2,11 +2,21 @@
 #define SERVICES_SESAME_CRYPTO_MBED_TLS_HPP
 
 #include "infra/util/BoundedVector.hpp"
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/build_info.h"
+#if MBEDTLS_VERSION_MAJOR >= 4
+#include "mbedtls/ecp.h"
+#include "mbedtls/private/pk_private.h"
+#else
 #include "mbedtls/ecdh.h"
 #include "mbedtls/ecp.h"
-#include "mbedtls/gcm.h"
+#endif
+#include "mbedtls/private/gcm.h"
 #include "mbedtls/pk.h"
 #include "mbedtls/x509_crt.h"
+#include "mbedtls/x509_csr.h"
 #include "services/util/SesameCrypto.hpp"
 
 namespace services
@@ -42,13 +52,16 @@ namespace services
         hal::SynchronousRandomDataGenerator& randomDataGenerator;
         mbedtls_ecp_group group;
         mbedtls_mpi privateKey;
+#if MBEDTLS_VERSION_MAJOR < 4
         mbedtls_ecdh_context context;
+#endif
     };
 
     class EcSecP256r1DsaVerifierMbedTls
         : public EcSecP256r1DsaVerifier
     {
     public:
+        explicit EcSecP256r1DsaVerifierMbedTls(infra::ConstByteRange dsaPublicKey);
         EcSecP256r1DsaVerifierMbedTls(infra::ConstByteRange dsaCertificate, infra::ConstByteRange rootCaCertificate);
         ~EcSecP256r1DsaVerifierMbedTls();
 

@@ -1,7 +1,11 @@
 #ifndef SERVICES_AES_MBEDTLS_HPP
 #define SERVICES_AES_MBEDTLS_HPP
 
-#include "mbedtls/aes.h"
+// ESP-IDF mbedtls 4.x moved AES to private API; include directly
+#ifndef MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#endif
+#include "mbedtls/private/aes.h"
 #include "services/util/Aes.hpp"
 
 namespace services
