@@ -2,7 +2,14 @@
 #define INFRA_TICK_ON_INTERRUPT_TIMER_SERVICE_HPP
 
 #include "infra/timer/TimerService.hpp"
-#include <atomic>
+
+#if __has_include("esp_attr.h")
+#include "esp_attr.h"
+#else
+#ifndef IRAM_ATTR
+#define IRAM_ATTR
+#endif
+#endif
 
 namespace infra
 {
@@ -19,7 +26,7 @@ namespace infra
         void SetResolution(Duration resolution);
 
         void TimeProgressed(Duration amount);
-        void SystemTickInterrupt();
+        void IRAM_ATTR SystemTickInterrupt();
 
     private:
         void CalculateNextTrigger();
@@ -29,9 +36,9 @@ namespace infra
         TimePoint systemTime = TimePoint();
         Duration resolution;
 
-        std::atomic<uint32_t> ticksNextNotification{ 0 };
-        std::atomic<uint32_t> ticksProgressed{ 0 };
-        std::atomic_bool notificationScheduled{ false };
+        volatile uint32_t ticksNextNotification{ 0 };
+        volatile uint32_t ticksProgressed{ 0 };
+        volatile bool notificationScheduled{ false };
     };
 }
 

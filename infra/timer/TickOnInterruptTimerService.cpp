@@ -3,6 +3,14 @@
 #include "infra/util/ReallyAssert.hpp"
 #include <cassert>
 
+#if __has_include("esp_attr.h")
+#include "esp_attr.h"
+#else
+#ifndef IRAM_ATTR
+#define IRAM_ATTR
+#endif
+#endif
+
 namespace infra
 {
     TickOnInterruptTimerService::TickOnInterruptTimerService(uint32_t id, Duration resolution)
@@ -21,7 +29,7 @@ namespace infra
 
     TimePoint TickOnInterruptTimerService::Now() const
     {
-        return systemTime + ticksProgressed.load() * resolution;
+        return systemTime + ticksProgressed * resolution;
     }
 
     Duration TickOnInterruptTimerService::Resolution() const
@@ -42,19 +50,23 @@ namespace infra
         Progressed(systemTime);
     }
 
-    void TickOnInterruptTimerService::SystemTickInterrupt()
+    void IRAM_ATTR TickOnInterruptTimerService::SystemTickInterrupt()
     {
         ++ticksProgressed;
-        if (ticksProgressed >= ticksNextNotification && !notificationScheduled.exchange(true))
+        if (ticksProgressed >= ticksNextNotification && !notificationScheduled)
+        {
+            notificationScheduled = true;
             infra::EventDispatcher::Instance().Schedule([this]()
                 {
                     ProcessTicks();
                 });
+        }
     }
 
     void TickOnInterruptTimerService::CalculateNextTrigger()
     {
         infra::TimePoint nextTrigger = NextTrigger();
+
         if (nextTrigger != infra::TimePoint::max())
         {
             auto durationToNextNotification = nextTrigger > systemTime ? nextTrigger - systemTime : Duration();
@@ -66,7 +78,10 @@ namespace infra
 
     void TickOnInterruptTimerService::ProcessTicks()
     {
-        TimeProgressed(ticksProgressed.exchange(0) * resolution);
+        auto currentTicksProgressed = ticksProgressed;
+        ticksProgressed = 0;
+
+        TimeProgressed(currentTicksProgressed * resolution);
         NextTriggerChanged();
 
         // If in the meantime ticksProgressed has been increased beyond ticksNextNotification,
@@ -74,7 +89,8 @@ namespace infra
         // Use the result of the assign to notificationScheduled, in order to avoid notificationScheduled
         // being set to false, then receiving an interrupt setting it to true, and not handling the newly scheduled
         // event immediately.
-        bool reschedule = notificationScheduled = ticksProgressed >= ticksNextNotification;
+        bool reschedule = ticksProgressed >= ticksNextNotification;
+        notificationScheduled = reschedule;
         if (reschedule)
             infra::EventDispatcher::Instance().Schedule([this]()
                 {
