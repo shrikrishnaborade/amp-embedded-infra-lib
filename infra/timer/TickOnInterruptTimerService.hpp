@@ -26,7 +26,8 @@ namespace infra
         void SetResolution(Duration resolution);
 
         void TimeProgressed(Duration amount);
-        void IRAM_ATTR SystemTickInterrupt();
+        bool IRAM_ATTR SystemTickInterrupt();
+        void ProcessDeferredFromInterrupt();
 
     private:
         void CalculateNextTrigger();

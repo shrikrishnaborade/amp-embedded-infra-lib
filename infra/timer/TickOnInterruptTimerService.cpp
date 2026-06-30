@@ -50,17 +50,24 @@ namespace infra
         Progressed(systemTime);
     }
 
-    void IRAM_ATTR TickOnInterruptTimerService::SystemTickInterrupt()
+    bool IRAM_ATTR TickOnInterruptTimerService::SystemTickInterrupt()
     {
         ++ticksProgressed;
         if (ticksProgressed >= ticksNextNotification && !notificationScheduled)
         {
             notificationScheduled = true;
-            infra::EventDispatcher::Instance().Schedule([this]()
-                {
-                    ProcessTicks();
-                });
+            return true;
         }
+
+        return false;
+    }
+
+    void TickOnInterruptTimerService::ProcessDeferredFromInterrupt()
+    {
+        infra::EventDispatcher::Instance().Schedule([this]()
+            {
+                ProcessTicks();
+            });
     }
 
     void TickOnInterruptTimerService::CalculateNextTrigger()
