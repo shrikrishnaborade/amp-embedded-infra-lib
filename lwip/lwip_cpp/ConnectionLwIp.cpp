@@ -502,6 +502,7 @@ namespace services
 
     ListenerLwIp::ListenerLwIp(AllocatorConnectionLwIp& allocator, uint16_t port, ServerConnectionObserverFactory& factory, IPVersions versions, ConnectionFactoryLwIp& connectionFactory)
         : allocator(allocator)
+        , listenPort(nullptr)
         , factory(factory)
         , access([this]()
               {
@@ -510,23 +511,45 @@ namespace services
         , connectionFactory(connectionFactory)
     {
         tcp_pcb* pcb = tcp_new();
-        assert(pcb != nullptr);
+        if (pcb == nullptr)
+        {
+            services::GlobalTracer().Trace() << "ListenerLwIp::ListenerLwIp tcp_new failed";
+            return;
+        }
+
         ip_set_option(pcb, SOF_REUSEADDR);
+
+        err_t err = ERR_OK;
         if (versions == IPVersions::both)
-            err_t err = tcp_bind(pcb, IP_ANY_TYPE, port);
+            err = tcp_bind(pcb, IP_ANY_TYPE, port);
         else if (versions == IPVersions::ipv4)
-            err_t err = tcp_bind(pcb, IP4_ADDR_ANY, port);
+            err = tcp_bind(pcb, IP4_ADDR_ANY, port);
         else
-            err_t err = tcp_bind(pcb, IP6_ADDR_ANY, port);
+            err = tcp_bind(pcb, IP6_ADDR_ANY, port);
+
+        if (err != ERR_OK)
+        {
+            services::GlobalTracer().Trace() << "ListenerLwIp::ListenerLwIp tcp_bind failed: " << static_cast<int>(err);
+            tcp_abort(pcb);
+            return;
+        }
+
         listenPort = tcp_listen(pcb);
-        assert(listenPort != nullptr);
+        if (listenPort == nullptr)
+        {
+            services::GlobalTracer().Trace() << "ListenerLwIp::ListenerLwIp tcp_listen failed";
+            tcp_abort(pcb);
+            return;
+        }
+
         tcp_accept(listenPort, &ListenerLwIp::Accept);
         tcp_arg(listenPort, this);
     }
 
     ListenerLwIp::~ListenerLwIp()
     {
-        tcp_close(listenPort);
+        if (listenPort != nullptr)
+            tcp_close(listenPort);
     }
 
     err_t ListenerLwIp::Accept(void* arg, struct tcp_pcb* newPcb, err_t err)
