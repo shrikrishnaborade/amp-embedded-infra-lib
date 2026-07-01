@@ -279,20 +279,7 @@ namespace services
             // if (address.type == IPADDR_TYPE_V6)
             //     ip6_addr_set_zone(&address.u_addr.ip6, netif_default->ip6_addr->u_addr.ip6.zone);
 
-            err_t result = udp_sendto(control, buffer, &address, Convert(*remote).second);
-            if (result != ERR_OK)
-            {
-                if (std::holds_alternative<Udpv4Socket>(*remote))
-                {
-                    const auto& ipv4 = std::get<Udpv4Socket>(*remote).first;
-                    const auto port = std::get<Udpv4Socket>(*remote).second;
-                    ESP_LOGE(kTag, "udp_sendto failed: %d, remote=%u.%u.%u.%u:%u", static_cast<int>(result),
-                        static_cast<unsigned>(ipv4[0]), static_cast<unsigned>(ipv4[1]), static_cast<unsigned>(ipv4[2]), static_cast<unsigned>(ipv4[3]),
-                        static_cast<unsigned>(port));
-                }
-                else
-                    ESP_LOGE(kTag, "udp_sendto failed: %d (IPv6 remote)", static_cast<int>(result));
-            }
+            udp_sendto(control, buffer, &address, Convert(*remote).second);
         }
         pbuf_free(buffer);
     }

@@ -198,6 +198,18 @@ namespace services
     void ConnectionLwIp::TryAllocateSendStream()
     {
         assert(streamWriter.Allocatable());
+
+        if (self == nullptr || control == nullptr || !IsAttached())
+        {
+            requestedSendSize = 0;
+            sendBufferForStream.clear();
+
+            if (sendMemoryPoolWaiting.has_element(*this))
+                sendMemoryPoolWaiting.erase(*this);
+
+            return;
+        }
+
         if (!sendBuffers.full() && !sendMemoryPool.full() && sendBuffer.empty())
         {
             if (sendMemoryPoolWaiting.has_element(*this))
@@ -205,6 +217,7 @@ namespace services
 
             sendMemoryPool.emplace_back();
             sendBufferForStream = infra::Head(infra::ByteRange(sendMemoryPool.back()), requestedSendSize);
+            auto keepAlive = infra::StaticPointerCast<ConnectionLwIp>(self);
             infra::EventDispatcherWithWeakPtr::Instance().Schedule([](const infra::SharedPtr<ConnectionLwIp>& self)
                 {
                     infra::SharedPtr<infra::StreamWriter> stream = self->streamWriter.Emplace(*self, self->sendBufferForStream);
@@ -214,7 +227,7 @@ namespace services
                     if (self->closing)
                         self->CloseAndDestroy();
                 },
-                SharedFromThis());
+                keepAlive);
 
             requestedSendSize = 0;
         }
