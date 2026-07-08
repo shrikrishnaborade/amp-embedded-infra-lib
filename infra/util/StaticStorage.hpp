@@ -3,6 +3,7 @@
 
 #include "infra/util/VariadicTemplates.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <type_traits>
@@ -41,7 +42,7 @@ namespace infra
         const T* operator->() const;
 
     private:
-        typename std::aligned_storage<sizeof(T), std::alignment_of<T>::value>::type data = {};
+        alignas(std::alignment_of_v<T>) std::byte data[sizeof(T)] = {};
     };
 
     template<class T, std::size_t ExtraSize, class AlignAs = uint64_t>
@@ -67,7 +68,7 @@ namespace infra
 
     private:
         T* dataPtr = nullptr;
-        typename std::aligned_storage<sizeof(T) + ExtraSize, std::alignment_of<AlignAs>::value>::type data;
+        alignas(std::alignment_of_v<AlignAs>) std::byte data[sizeof(T) + ExtraSize];
     };
 
     template<class Base, class... Derived>

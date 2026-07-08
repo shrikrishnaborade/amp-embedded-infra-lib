@@ -17,7 +17,7 @@ namespace infra
     class QueueForOneReaderOneIrqWriter
     {
     public:
-        static_assert(std::is_trivial<T>::value, "Trivial type required");
+        static_assert(std::is_trivially_default_constructible_v<T> && std::is_trivially_copyable_v<T>, "Trivial type required");
 
         template<std::size_t Size>
         using WithStorage = infra::WithStorage<QueueForOneReaderOneIrqWriter<T>, std::array<T, Size + 1>>;
