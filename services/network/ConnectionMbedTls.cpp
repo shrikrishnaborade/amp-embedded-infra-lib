@@ -207,6 +207,7 @@ namespace services
 
     void ConnectionMbedTls::Attached()
     {
+        self = SharedFromThis();
         InitTls();
     }
 
@@ -220,6 +221,7 @@ namespace services
         destructed = true;
 
         ConnectionWithHostname::Detach();
+        self = nullptr;
     }
 
     void ConnectionMbedTls::Close()

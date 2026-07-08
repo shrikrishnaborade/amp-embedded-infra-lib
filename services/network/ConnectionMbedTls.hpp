@@ -150,6 +150,8 @@ namespace services
         bool closing = false;
         bool aborting = false;
         bool destructed = false;
+
+        infra::SharedPtr<ConnectionMbedTls> self;
     };
 
     using AllocatorConnectionMbedTls = infra::SharedObjectAllocator<ConnectionMbedTls,
