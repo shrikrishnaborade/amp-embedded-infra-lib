@@ -152,6 +152,7 @@ namespace services
         GattServer& operator=(const GattServer& other) = delete;
 
         virtual void AddService(GattServerService& service) = 0;
+        virtual void AddProtectedService(GattServerService& service) = 0;
     };
 
     inline GattServerCharacteristic::PermissionFlags operator|(GattServerCharacteristic::PermissionFlags lhs, GattServerCharacteristic::PermissionFlags rhs)

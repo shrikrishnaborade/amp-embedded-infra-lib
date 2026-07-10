@@ -69,6 +69,16 @@ namespace services
         return valueHandle;
     }
 
+    bool& GattCharacteristic::ProtectedFlag()
+    {
+        return protectedFlag;
+    }
+
+    const bool& GattCharacteristic::ProtectedFlag() const
+    {
+        return protectedFlag;
+    }
+
     GattService::GattService(const AttAttribute::Uuid& type)
         : GattService(type, 0, 0)
     {}
@@ -118,6 +128,17 @@ namespace services
     {
         attMtu = value;
     }
+
+    bool& GattService::ProtectedFlag()
+    {
+        return protectedFlag;
+    }
+
+    const bool& GattService::ProtectedFlag() const
+    {
+        return protectedFlag;
+    }
+
 }
 
 namespace infra
