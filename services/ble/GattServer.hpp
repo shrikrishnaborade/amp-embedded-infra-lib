@@ -38,6 +38,7 @@ namespace services
     public:
         using infra::Observer<GattServerCharacteristicOperationsObserver, GattServerCharacteristicOperations>::Observer;
 
+        virtual bool Protected() const = 0;
         virtual AttAttribute::Handle ServiceHandle() const = 0;
         virtual AttAttribute::Handle CharacteristicHandle() const = 0;
         virtual AttAttribute::Handle CharacteristicValueHandle() const = 0;
@@ -112,6 +113,7 @@ namespace services
         GattServerCharacteristic() = default;
         GattServerCharacteristic(const AttAttribute::Uuid& type, const PropertyFlags& properties, const PermissionFlags& permissions, uint16_t valueLength);
 
+        bool Protected() const override;
         PermissionFlags Permissions() const;
         uint16_t ValueLength() const;
         uint8_t GetAttributeCount() const;
