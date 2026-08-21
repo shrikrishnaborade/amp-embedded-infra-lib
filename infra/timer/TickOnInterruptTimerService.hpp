@@ -32,6 +32,7 @@ namespace infra
         std::atomic<uint32_t> ticksNextNotification{ 0 };
         std::atomic<uint32_t> ticksProgressed{ 0 };
         std::atomic_bool notificationScheduled{ false };
+        infra::Function<void()> processTicksAction;
     };
 }
 

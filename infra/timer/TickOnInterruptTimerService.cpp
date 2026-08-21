@@ -8,6 +8,10 @@ namespace infra
     TickOnInterruptTimerService::TickOnInterruptTimerService(uint32_t id, Duration resolution)
         : TimerService(id)
         , resolution(resolution)
+        , processTicksAction([this]()
+              {
+                  ProcessTicks();
+              })
     {
         really_assert(infra::EventDispatcher::InstanceSet());
 
@@ -46,10 +50,7 @@ namespace infra
     {
         ++ticksProgressed;
         if (ticksProgressed >= ticksNextNotification && !notificationScheduled.exchange(true))
-            infra::EventDispatcher::Instance().Schedule([this]()
-                {
-                    ProcessTicks();
-                });
+            infra::EventDispatcher::Instance().Schedule(processTicksAction);
     }
 
     void TickOnInterruptTimerService::CalculateNextTrigger()
@@ -76,9 +77,6 @@ namespace infra
         // event immediately.
         bool reschedule = notificationScheduled = ticksProgressed >= ticksNextNotification;
         if (reschedule)
-            infra::EventDispatcher::Instance().Schedule([this]()
-                {
-                    ProcessTicks();
-                });
+            infra::EventDispatcher::Instance().Schedule(processTicksAction);
     }
 }
