@@ -83,12 +83,15 @@ namespace services
         AttAttribute::Handle& Handle();
         AttAttribute::Handle ValueHandle() const;
         AttAttribute::Handle& ValueHandle();
+        bool& ProtectedFlag();
+        const bool& ProtectedFlag() const;
 
     protected:
         AttAttribute::Uuid type;
         AttAttribute::Handle handle;
         AttAttribute::Handle valueHandle;
         PropertyFlags properties;
+        bool protectedFlag;
     };
 
     class GattService
@@ -103,11 +106,14 @@ namespace services
         AttAttribute::Handle EndHandle() const;
         AttAttribute::Handle& EndHandle();
         uint8_t GetAttributeCount() const;
+        bool& ProtectedFlag();
+        const bool& ProtectedFlag() const;
 
     protected:
         AttAttribute::Uuid type;
         AttAttribute::Handle handle;
         AttAttribute::Handle endHandle;
+        bool protectedFlag;
     };
 
     class AttMtuExchange;

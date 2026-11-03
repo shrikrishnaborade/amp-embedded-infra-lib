@@ -28,6 +28,11 @@ namespace services
         , valueLength(valueLength)
     {}
 
+    bool GattServerCharacteristic::Protected() const
+    {
+        return ProtectedFlag();
+    }
+
     GattServerCharacteristic::PermissionFlags GattServerCharacteristic::Permissions() const
     {
         return permissions;

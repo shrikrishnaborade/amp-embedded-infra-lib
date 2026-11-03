@@ -242,7 +242,7 @@ namespace infra
 
         template<std::size_t ExtraSize, class Result, class... Args>
         InvokerFunctions<Result(Args...), ExtraSize>::InvokerFunctions()
-            : virtualMethodTable{ FunctionType::ReinterpretAbortOnExecuteSentinelTable() }
+            : virtualMethodTable{ nullptr }
         {}
 
         template<std::size_t ExtraSize, class Result, class... Args>
@@ -257,7 +257,7 @@ namespace infra
         void InvokerFunctions<Result(Args...), ExtraSize>::StaticDestruct(InvokerFunctionsType& invokerFunctions)
         {
             reinterpret_cast<F&>(invokerFunctions.data).~F();
-            invokerFunctions.virtualMethodTable = FunctionType::ReinterpretAbortOnExecuteSentinelTable();
+            invokerFunctions.virtualMethodTable = nullptr;
         }
 
         template<std::size_t ExtraSize, class Result, class... Args>
@@ -376,13 +376,13 @@ namespace infra
         {
             CopyConstruct(invokerFunctions, other.invokerFunctions);
             Destruct(invokerFunctions);
-            invokerFunctions.virtualMethodTable = ReinterpretAbortOnExecuteSentinelTable();
+            invokerFunctions.virtualMethodTable = nullptr;
         }
         else if (other.Initialized())
         {
             CopyConstruct(other.invokerFunctions, invokerFunctions);
             Destruct(other.invokerFunctions);
-            other.invokerFunctions.virtualMethodTable = ReinterpretAbortOnExecuteSentinelTable();
+            other.invokerFunctions.virtualMethodTable = nullptr;
         }
     }
 
@@ -431,14 +431,14 @@ namespace infra
         if (Initialized())
         {
             Destruct(invokerFunctions);
-            invokerFunctions.virtualMethodTable = ReinterpretAbortOnExecuteSentinelTable();
+            invokerFunctions.virtualMethodTable = nullptr;
         }
     }
 
     template<std::size_t ExtraSize, class Result, class... Args>
     bool Function<Result(Args...), ExtraSize>::Initialized() const
     {
-        return invokerFunctions.virtualMethodTable != ReinterpretAbortOnExecuteSentinelTable();
+        return invokerFunctions.virtualMethodTable != nullptr;
     }
 
     template<std::size_t ExtraSize, class Result, class... Args>
