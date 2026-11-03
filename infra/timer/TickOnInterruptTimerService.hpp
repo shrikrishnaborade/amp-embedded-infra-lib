@@ -2,6 +2,7 @@
 #define INFRA_TICK_ON_INTERRUPT_TIMER_SERVICE_HPP
 
 #include "infra/timer/TimerService.hpp"
+#include "infra/util/Function.hpp"
 
 #if __has_include("esp_attr.h")
 #include "esp_attr.h"
@@ -36,6 +37,7 @@ namespace infra
     private:
         TimePoint systemTime = TimePoint();
         Duration resolution;
+        infra::Function<void()> processTicksAction;
 
         volatile uint32_t ticksNextNotification{ 0 };
         volatile uint32_t ticksProgressed{ 0 };
