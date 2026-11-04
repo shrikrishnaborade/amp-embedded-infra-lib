@@ -8,7 +8,10 @@
 #include "mbedtls/build_info.h"
 #if MBEDTLS_VERSION_MAJOR >= 4
 #include "mbedtls/ecp.h"
+extern "C"
+{
 #include "mbedtls/private/pk_private.h"
+}
 #else
 #include "mbedtls/ecdh.h"
 #include "mbedtls/ecp.h"
