@@ -53,6 +53,7 @@ namespace services
 
     private:
         void SendBuffer(infra::ConstByteRange buffer);
+        void RetrySend();
         void TryAllocateSendStream();
         void AbortControl();
         void DisableCallbacks();

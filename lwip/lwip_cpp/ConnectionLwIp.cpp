@@ -190,9 +190,18 @@ namespace services
             sendBuffer = buffer;
             retrySendTimer.Start(std::chrono::milliseconds(50), [this]()
                 {
-                    SendBuffer(sendBuffer);
+                    RetrySend();
                 });
         }
+    }
+
+    void ConnectionLwIp::RetrySend()
+    {
+        if (control == nullptr || sendBuffer.empty())
+            return;
+
+        retrySendTimer.Cancel();
+        SendBuffer(sendBuffer);
     }
 
     void ConnectionLwIp::TryAllocateSendStream()
@@ -337,6 +346,9 @@ namespace services
                 len = 0;
             }
         }
+
+        if (control != nullptr && !sendBuffer.empty() && tcp_sndbuf(control) >= sendBuffer.size())
+            RetrySend();
 
         if (requestedSendSize != 0)
             TryAllocateSendStream();
